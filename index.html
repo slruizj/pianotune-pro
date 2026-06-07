@@ -285,7 +285,7 @@ textarea.input{resize:vertical;min-height:68px}
     ☁️ <span id="dt-sync-txt">Listo</span>
   </div>
   <div style="padding:10px 16px 14px">
-    <div style="color:rgba(255,255,255,.35);font-size:10px;font-weight:600;letter-spacing:.4px">PianoTune Pro v2.9.0</div>
+    <div style="color:rgba(255,255,255,.35);font-size:10px;font-weight:600;letter-spacing:.4px">PianoTune Pro v2.9.4</div>
   </div>
 </div>
 
@@ -313,6 +313,9 @@ textarea.input{resize:vertical;min-height:68px}
 
 <!-- ══ MOBILE SCREENS (solo visible en móvil) ══ -->
 <div id="mobile-wrap">
+<!-- ══ SCREEN COTIZADOR CUERDAS ══ -->
+<div id="screen-cotizador" class="screen hidden"></div>
+
 <nav class="nav">
   <button class="nav-btn active" onclick="navigate('inicio')">
     <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9,22 9,12 15,12 15,22"/></svg>Inicio
@@ -350,7 +353,7 @@ textarea.input{resize:vertical;min-height:68px}
 // ══ CONSTANTS ══
 const SK='pianotune_v3';
 const isDesktop=()=>window.innerWidth>=1024; // v2.9.0 — debe estar al inicio
-var DT_SCREEN_TITLES={inicio:'Dashboard',clientes:'Clientes',calendario:'Agenda',servicios:'Catálogo de servicios',productos:'Inventario',presupuesto:'Presupuestos',config:'Configuración'};
+var DT_SCREEN_TITLES={inicio:'Dashboard',clientes:'Clientes',calendario:'Agenda',servicios:'Catálogo de servicios',productos:'Inventario',presupuesto:'Presupuestos',config:'Configuración',cotizador:'Cotizador de Cuerdas',ayuda:'Manual de Ayuda'};
 const PIANO_TIPOS={
   'Grand':["9 pies (Concert)","7 pies (Semi-Concert)","6 pies (Medium)","Baby Grand"],
   'Vertical':["Profesional (131cm+)","Estudio (116-131cm)","Consola (110-116cm)","Espinet (<110cm)"]
@@ -642,6 +645,8 @@ function showToast(msg,ms=2800){
 // ══ NAV ══
 let currentScreen='inicio';
 function navigate(name){
+  // v2.9.1 — ayuda abre manual en nueva pestaña
+  if(name==='ayuda'){window.open('manual.html','_blank');return;}
   document.querySelectorAll('.screen').forEach(s=>s.classList.add('hidden'));
   document.getElementById('screen-'+name).classList.remove('hidden');
   document.querySelectorAll('.nav-btn').forEach((b,i)=>{
@@ -662,7 +667,7 @@ function onFabClick(){
 function renderScreen(n){
   ({inicio:renderInicio,clientes:renderClientes,calendario:renderCalendario,
     servicios:renderServicios,productos:renderProductos,presupuesto:renderPresupuesto,
-    config:renderConfig})[n]?.();
+    config:renderConfig,cotizador:renderCotizadorCuerdas})[n]?.();
 }
 
 // ══ MODAL ══
@@ -846,6 +851,7 @@ async function renderInicio(){
     <div style="display:flex;gap:6px;flex-wrap:wrap">
       <button class="btn btn-ghost btn-xs" onclick="abrirPDF_OS(${c.id})">📝 Orden</button>
       <button class="btn btn-ghost btn-xs" onclick="abrirPDF_CP(${c.id})">🧾 Comprobante</button>
+      <button class="btn btn-ghost btn-xs" onclick="tpVistaPrevia(tpGenerarOS(${c.id}),'Orden de Servicio',()=>tpImprimirOS(${c.id}))">🖨️ Imprimir</button>
       <button class="btn btn-wa btn-xs" onclick="enviarComprobantePorWA(${c.id})">💬 WA</button>
       <button class="btn btn-success btn-xs" onclick="modalFacturar(${c.id})">✓ Facturado</button>
     </div>`);
@@ -1094,7 +1100,8 @@ function showModalCliente(id){
         </div>
         <div style="text-align:right;flex-shrink:0">
           <div style="font-weight:700;font-size:13px;color:var(--success)">${fmtMoney(total)}</div>
-          ${esFacturado?`<button class="btn btn-ghost btn-xs" style="margin-top:4px" onclick="abrirPDF_OS(${ct.id})">📝 OS</button>`:''}
+          ${esFacturado?`<button class="btn btn-ghost btn-xs" style="margin-top:4px" onclick="abrirPDF_OS(${ct.id})">📝 OS</button>
+              <button class="btn btn-ghost btn-xs" style="margin-top:4px" onclick="tpVistaPrevia(tpGenerarRecibo(${ct.id}),'Recibo',()=>tpImprimirRecibo(${ct.id}))">🖨️ Recibo</button>`:''}
         </div>
       </div>`;
     }).join('');
@@ -1716,6 +1723,7 @@ function renderServicios(){
   <div class="page-header">
     <div style="display:flex;justify-content:space-between;align-items:flex-start">
       <div><div class="page-title">Catálogo de servicios</div><div class="page-sub">${shown.length} servicios</div></div>
+      <button onclick="navigate('cotizador')" style="display:flex;align-items:center;gap:5px;padding:7px 13px;border-radius:20px;background:var(--primary);border:none;color:#fff;font-weight:700;font-size:12px;cursor:pointer;flex-shrink:0">🎵 Cotizar</button>
     </div>
     <div style="display:flex;gap:6px;overflow-x:auto;padding:8px 0 2px;scrollbar-width:none">
       ${['todos',...cats].map(c=>`<button onclick="_svcFiltro='${c}';renderServicios()" style="flex-shrink:0;padding:5px 11px;border-radius:20px;border:1.5px solid ${_svcFiltro===c?'var(--primary)':'var(--border)'};background:${_svcFiltro===c?'var(--primary)':'var(--surface)'};color:${_svcFiltro===c?'#fff':'var(--text2)'};font-size:12px;font-weight:600;cursor:pointer">${c==='todos'?'Todos':CAT_LABELS[c]||c}</button>`).join('')}
@@ -1944,6 +1952,7 @@ function renderPresupuesto(){
         </div>
         <div style="display:flex;gap:7px;margin-top:10px;flex-wrap:wrap">
           <button class="btn btn-primary btn-xs" onclick="generarPDF(${p.id})">📄 PDF</button>
+          <button class="btn btn-ghost btn-xs" onclick="tpVistaPrevia(tpGenerarPresupuesto(${p.id}),'Presupuesto',()=>tpImprimirPresupuesto(${p.id}))">🖨️ Imprimir</button>
           <button class="btn btn-wa btn-xs" onclick="showMenuWAPresupuesto(${p.id})">💬 WA</button>
           <button class="btn btn-success btn-xs" onclick="agendarDesdePresupuesto(${p.id})">📅 Agendar</button>
           <button class="btn btn-ghost btn-xs" onclick="verPresupuesto(${p.id})">Ver</button>
@@ -1964,11 +1973,22 @@ function toggleForaneo(){
   if(pbForaneo)pbItems.push({svcId:null,nombre:'🚗 Viáticos / Transporte',precio:400,_foraneo:true});
   renderPbItems();
 }
-function showModalNuevoPresupuesto(preCliId){
-  pbItems=[];pbCliId=preCliId||null;pbPianoId=null;pbForaneo=false;
-  const cliOpts=`<option value="">Seleccionar cliente…</option>`+state.clientes.map(c=>`<option value="${c.id}" ${c.id===preCliId?'selected':''}>${c.nombre}</option>`).join('');
-  const pOpts=preCliId?buildPianoOpts(preCliId):'<option value="">Selecciona cliente</option>';
-  openModal(`<div class="modal-title">Nuevo presupuesto</div>
+// ── v2.9.4 — PRESUPUESTO MODAL UNIFICADO ──────────────────
+function _openPresupuestoModal(titulo, boton, preCliId, presExistente){
+  // presExistente: presupuesto a editar, null=nuevo
+  if(presExistente){
+    pbItems=[...presExistente.items.map(i=>({...i}))];
+    pbCliId=presExistente.clienteId;
+    pbPianoId=presExistente.pianoId;
+    pbForaneo=false;
+  } else {
+    pbItems=[];pbCliId=preCliId||null;pbPianoId=null;pbForaneo=false;
+  }
+  const cliOpts=`<option value="">Seleccionar cliente…</option>`+state.clientes.map(c=>`<option value="${c.id}" ${c.id===(presExistente?presExistente.clienteId:preCliId)?'selected':''}>${c.nombre}</option>`).join('');
+  const pOpts=(presExistente?.clienteId||preCliId)?buildPianoOpts(presExistente?.clienteId||preCliId):'<option value="">Selecciona cliente</option>';
+  const editId = presExistente?presExistente.id:null;
+
+  openModal(`<div class="modal-title">${titulo}</div>
   <div class="input-group"><label class="input-label">Cliente</label>
     <div style="display:flex;gap:6px">
       <select class="input select" id="pb-c" style="flex:1" onchange="onPbCliChange()">${cliOpts}</select>
@@ -1976,14 +1996,30 @@ function showModalNuevoPresupuesto(preCliId){
     </div></div>
   <div class="input-group"><label class="input-label">Piano</label>
     <select class="input select" id="pb-p">${pOpts}</select></div>
-  <div class="modal-sub">Servicios</div>
+
+  <div class="modal-sub" style="margin-top:10px">Servicios</div>
   <div id="pb-svc-wrap"></div>
-  <div style="display:flex;gap:6px;align-items:center;margin-top:6px">
+  <div style="display:flex;gap:6px;align-items:center;margin:6px 0 4px">
     <input type="number" class="input" id="pb-pr" style="width:88px" placeholder="Precio">
-    <button class="btn btn-ghost btn-sm" onclick="agregarItemPb()">+ Add</button>
+    <button class="btn btn-ghost btn-sm" onclick="agregarItemPb('svc')">+ Agregar</button>
   </div>
-  <div id="pb-items" style="margin-top:10px"></div>
+
+  <div class="modal-sub" style="margin-top:10px">Productos</div>
+  <div id="pb-prod-wrap"></div>
+  <div style="display:flex;gap:6px;align-items:center;margin:6px 0 4px">
+    <input type="number" class="input" id="pb-prod-pr" style="width:88px" placeholder="Precio">
+    <button class="btn btn-ghost btn-sm" onclick="agregarItemPb('prod')">+ Agregar</button>
+  </div>
+
+  <div class="modal-sub" style="margin-top:10px">Cotizadores</div>
+  <div style="display:flex;gap:8px;margin-bottom:8px">
+    <button onclick="showMiniCotizadorCuerdas()" style="flex:1;padding:9px;border-radius:10px;border:1.5px solid var(--primary);background:var(--primary-light);color:var(--primary);font-weight:700;font-size:13px;cursor:pointer">🎵 Cuerda entorchada</button>
+    <button onclick="showToast('Cotizador de fundas próximamente')" style="flex:1;padding:9px;border-radius:10px;border:1.5px dashed var(--border);background:var(--bg);color:var(--text3);font-weight:600;font-size:13px;cursor:pointer">🎸 Funda (próximo)</button>
+  </div>
+
+  <div id="pb-items" style="margin-top:4px"></div>
   <div id="pb-total" style="font-weight:700;font-size:16px;text-align:right;padding:6px 0;color:var(--success)"></div>
+
   <div class="foraneo-toggle" id="foraneo-toggle" onclick="toggleForaneo()">
     <div class="toggle-switch" id="foraneo-switch"></div>
     <div>
@@ -1991,15 +2027,105 @@ function showModalNuevoPresupuesto(preCliId){
       <div style="font-size:12px;color:var(--text2)">Suma viáticos/transporte automáticamente</div>
     </div>
   </div>
-  <button class="btn btn-primary btn-full" style="margin-top:8px" onclick="guardarPresupuesto()">Crear presupuesto</button>`);
-  setTimeout(()=>{buildSvcSelector('pb-svc-wrap','pb-s','pb-pr');if(preCliId){document.getElementById('pb-c').value=preCliId;onPbCliChange();}},50);
+  <button class="btn btn-primary btn-full" style="margin-top:8px" onclick="guardarPresupuesto(${editId||'null'})">${boton}</button>`);
+
+  setTimeout(()=>{
+    buildSvcSelector('pb-svc-wrap','pb-s','pb-pr');
+    buildProdSelector('pb-prod-wrap','pb-prod-s','pb-prod-pr');
+    const cId=presExistente?.clienteId||preCliId;
+    if(cId){document.getElementById('pb-c').value=cId;onPbCliChange();}
+    if(presExistente?.pianoId){setTimeout(()=>{const s=document.getElementById('pb-p');if(s)s.value=presExistente.pianoId;},80);}
+    renderPbItems();
+  },50);
+}
+
+function showModalNuevoPresupuesto(preCliId){
+  _openPresupuestoModal('Nuevo presupuesto','Crear presupuesto',preCliId,null);
+}
+function editarPresupuesto(id){
+  const p=state.presupuestos.find(x=>x.id===id);
+  if(!p)return;
+  _openPresupuestoModal('Modificar presupuesto','Guardar cambios',null,p);
+}
+
+// ── Mini selector de productos para presupuesto ────────────
+function buildProdSelector(wrapId, selId, prId){
+  const wrap=document.getElementById(wrapId);if(!wrap)return;
+  if(!state.productos||!state.productos.length){
+    wrap.innerHTML=`<div style="font-size:12px;color:var(--text3);padding:4px 0">Sin productos en catálogo</div>`;
+    return;
+  }
+  const opts=state.productos.map(p=>`<option value="${p.id}">${p.nombre} — ${fmtMoney(p.precio)}</option>`).join('');
+  wrap.innerHTML=`<select class="input select" id="${selId}" onchange="const p=state.productos.find(x=>x.id===parseInt(this.value));const el=document.getElementById('${prId}');if(el&&p)el.value=p.precio">${opts}</select>`;
+}
+
+// ── Mini cotizador de cuerdas dentro del presupuesto ────────
+function showMiniCotizadorCuerdas(){
+  const tipo=_cue.tipo||'vertical';
+  const cats=CUE_CATS[tipo];
+  const cat=cats.find(c=>c.id===_cue.catId)||cats[0];
+  const notaOpts=Array.from({length:cat.wound},(_,i)=>i+1)
+    .map(n=>`<option value="${n}" ${n===_cue.nota?'selected':''}>${notaNombre(n)}</option>`).join('');
+  const tipoCuerda=detectTipoCuerda(_cue.nota,cat);
+  const anchor=getCueAnchor(tipo,cat.id);
+  const precioUnit=Math.round(anchor*getCueFactor(tipoCuerda));
+
+  openModal(`<div class="modal-title">🎵 Agregar cuerda entorchada</div>
+  <div style="display:flex;gap:8px;margin-bottom:12px">
+    <button onclick="_cue.tipo='vertical';_cue.catId='esp';showMiniCotizadorCuerdas()"
+      style="flex:1;padding:8px;border-radius:8px;border:2px solid ${tipo==='vertical'?'var(--primary)':'var(--border)'};background:${tipo==='vertical'?'var(--primary-light)':'var(--surface)'};font-weight:700;font-size:13px;cursor:pointer;color:${tipo==='vertical'?'var(--primary)':'var(--text2)'}">Vertical</button>
+    <button onclick="_cue.tipo='cola';_cue.catId='baby';showMiniCotizadorCuerdas()"
+      style="flex:1;padding:8px;border-radius:8px;border:2px solid ${tipo==='cola'?'var(--primary)':'var(--border)'};background:${tipo==='cola'?'var(--primary-light)':'var(--surface)'};font-weight:700;font-size:13px;cursor:pointer;color:${tipo==='cola'?'var(--primary)':'var(--text2)'}">Cola</button>
+  </div>
+  <div class="input-group"><label class="input-label">Tamaño</label>
+    <select class="input select" onchange="_cue.catId=this.value;_cue.nota=1;showMiniCotizadorCuerdas()">
+      ${cats.map(ct=>`<option value="${ct.id}" ${ct.id===cat.id?'selected':''}>${ct.label}</option>`).join('')}
+    </select></div>
+  <div class="input-group"><label class="input-label">Nota musical</label>
+    <select class="input select" id="mini-nota" onchange="_cue.nota=parseInt(this.value);showMiniCotizadorCuerdas()">${notaOpts}</select></div>
+  <div style="padding:8px 12px;border-radius:8px;background:var(--primary-light);margin-bottom:12px;font-size:13px;font-weight:700;color:var(--primary)">
+    ${tipoCuerdaLabel(tipoCuerda)} — ${fmtMoney(precioUnit)} c/u
+  </div>
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+    <label class="input-label" style="margin:0">Cantidad:</label>
+    <button onclick="_cue.cantidad=Math.max(1,_cue.cantidad-1);showMiniCotizadorCuerdas()" style="width:30px;height:30px;border-radius:6px;border:1px solid var(--border);background:var(--bg);font-size:16px;cursor:pointer">−</button>
+    <span style="font-size:18px;font-weight:800;min-width:24px;text-align:center">${_cue.cantidad}</span>
+    <button onclick="_cue.cantidad=(_cue.cantidad||1)+1;showMiniCotizadorCuerdas()" style="width:30px;height:30px;border-radius:6px;border:1px solid var(--border);background:var(--bg);font-size:16px;cursor:pointer">+</button>
+    <span style="font-size:15px;font-weight:700;color:var(--primary);margin-left:auto">${fmtMoney(precioUnit*(_cue.cantidad||1))}</span>
+  </div>
+  <button class="btn btn-primary btn-full" onclick="agregarCuerdaAPresupuesto()">+ Agregar al presupuesto</button>`);
+}
+
+function agregarCuerdaAPresupuesto(){
+  const tipo=_cue.tipo;
+  const cat=CUE_CATS[tipo].find(c=>c.id===_cue.catId)||CUE_CATS[tipo][0];
+  const tipoCuerda=detectTipoCuerda(_cue.nota,cat);
+  const precioUnit=Math.round(getCueAnchor(tipo,cat.id)*getCueFactor(tipoCuerda));
+  const nombre=`Cuerda ${tipoCuerdaLabel(tipoCuerda)} ${notaNombre(_cue.nota)} (${cat.label})`;
+  for(let i=0;i<(_cue.cantidad||1);i++){
+    pbItems.push({nombre, precio:precioUnit, tipo:'cuerda'});
+  }
+  _cue.cantidad=1;
+  closeModal();
+  setTimeout(()=>renderPbItems(),100);
+  showToast(`✅ ${_cue.cantidad||1} cuerda(s) agregada(s) al presupuesto`);
 }
 function onPbCliChange(){const cId=document.getElementById('pb-c').value;const sel=document.getElementById('pb-p');if(sel)sel.innerHTML=cId?buildPianoOpts(cId):'<option value="">Selecciona cliente</option>';}
 function updPrecioPresupuesto(){svcSelChange('pb-s','pb-pr');}
-function agregarItemPb(){
-  const svcId=parseInt(document.getElementById('pb-s').value);const precio=Number(document.getElementById('pb-pr').value);
-  const svc=state.servicios.find(s=>s.id===svcId);if(!svc)return;
-  pbItems.push({svcId,nombre:svc.nombre,precio});renderPbItems();
+function agregarItemPb(tipo){
+  if(tipo==='prod'){
+    const prodId=parseInt(document.getElementById('pb-prod-s')?.value);
+    const precio=Number(document.getElementById('pb-prod-pr')?.value);
+    const prod=state.productos?.find(p=>p.id===prodId);
+    if(!prod)return showToast('Selecciona un producto');
+    pbItems.push({prodId,nombre:prod.nombre,precio:precio||prod.precio,tipo:'producto'});
+  } else {
+    const svcId=parseInt(document.getElementById('pb-s').value);
+    const precio=Number(document.getElementById('pb-pr').value);
+    const svc=state.servicios.find(s=>s.id===svcId);if(!svc)return;
+    pbItems.push({svcId,nombre:svc.nombre,precio});
+  }
+  renderPbItems();
 }
 function renderPbItems(){
   const total=pbItems.reduce((s,i)=>s+Number(i.precio),0);
@@ -2012,14 +2138,28 @@ function renderPbItems(){
   </div>`).join('');
   if(totEl)totEl.textContent=pbItems.length?'Total: '+fmtMoney(total):'';
 }
-function guardarPresupuesto(){
-  const clienteId=parseInt(document.getElementById('pb-c').value);const pianoId=parseInt(document.getElementById('pb-p').value)||null;
+function guardarPresupuesto(editId){
+  const clienteId=parseInt(document.getElementById('pb-c').value);
+  const pianoId=parseInt(document.getElementById('pb-p').value)||null;
   if(!clienteId){showToast('Selecciona un cliente');return;}
-  if(!pbItems.length){showToast('Agrega al menos un servicio');return;}
+  if(!pbItems.length){showToast('Agrega al menos un servicio o producto');return;}
+
+  if(editId){
+    // Editar presupuesto existente
+    const idx=state.presupuestos.findIndex(x=>x.id===editId);
+    if(idx>=0){
+      state.presupuestos[idx]={...state.presupuestos[idx],clienteId,pianoId,items:[...pbItems]};
+      saveState();closeModal();
+      showToast('✅ Presupuesto actualizado');
+      renderPresupuesto();
+    }
+    return;
+  }
+
+  // Nuevo presupuesto
   const newP={id:nextId(),clienteId,pianoId,fecha:new Date().toISOString().split('T')[0],items:[...pbItems]};
   state.presupuestos.push(newP);
   saveState();closeModal();
-  // Ask to create cita
   const cli=getCliente(clienteId);
   openModal(`<div class="modal-title">✓ Presupuesto creado</div>
   <p style="font-size:14px;color:var(--text2);margin-bottom:16px">¿Deseas agendar una cita para <b>${cli?cli.nombre:'este cliente'}</b>?</p>
@@ -2038,8 +2178,13 @@ function verPresupuesto(id){
     <div style="font-weight:700;font-size:14px">${fmtMoney(item.precio)}</div>
   </div>`).join('')}
   <div style="font-weight:700;font-size:18px;text-align:right;padding:12px 0;color:var(--success);border-top:2px solid var(--border);margin-top:4px">Total: ${fmtMoney(total)}</div>
+  <div style="display:flex;gap:8px;margin-bottom:8px">
+    <button class="btn btn-outline btn-sm" style="flex:1;border-color:var(--primary);color:var(--primary)" onclick="closeModal();editarPresupuesto(${id})">✏️ Modificar</button>
+    <button class="btn btn-danger btn-sm" style="flex:1" onclick="eliminarPresupuesto(${id})">🗑️ Eliminar</button>
+  </div>
   <button class="btn btn-wa btn-full" style="margin-bottom:8px" onclick="showMenuWAPresupuesto(${id})">💬 Enviar al cliente</button>
-  <button class="btn btn-ghost btn-full" style="border-color:var(--primary);color:var(--primary)" onclick="flujoAdminWA(${id})">📋 Enviar a Administración</button>`);}
+  <button class="btn btn-ghost btn-full" style="border-color:var(--primary);color:var(--primary)" onclick="flujoAdminWA(${id})">📋 Enviar a Administración</button>
+  <button class="btn btn-ghost btn-full" style="margin-top:6px" onclick="tpVistaPrevia(tpGenerarPresupuesto(${id}),'Presupuesto',()=>tpImprimirPresupuesto(${id}))">🖨️ Imprimir (55mm)</button>`);}
 
 function enviarWhatsAppCliente(id){
   const p=state.presupuestos.find(x=>x.id===id);const cli=getCliente(p.clienteId);if(!cli)return;
@@ -2165,7 +2310,10 @@ function renderConfig(){
     ?`<img src="${tec.foto}" class="tech-avatar" onclick="document.getElementById('tec-foto-inp').click()">`
     :`<div class="tech-avatar-ph" onclick="document.getElementById('tec-foto-inp').click()">SR</div>`;
   document.getElementById('screen-config').innerHTML=`
-  <div class="page-header"><div class="page-title">Configuración</div></div>
+  <div class="page-header" style="display:flex;align-items:center;justify-content:space-between;padding-right:16px">
+    <div><div class="page-title">Configuración</div></div>
+    <button onclick="window.open('manual.html','_blank')" style="display:flex;align-items:center;gap:6px;padding:7px 14px;border-radius:20px;background:var(--primary-light);border:none;color:var(--primary);font-weight:700;font-size:13px;cursor:pointer">❓ Ayuda</button>
+  </div>
 
   <div class="sec">Perfil del técnico</div>
   <div class="card" style="margin:0 16px 12px">
@@ -2216,6 +2364,34 @@ function renderConfig(){
     <button class="btn btn-primary btn-full" style="margin-top:12px" onclick="guardarPerfilTecnico()">Guardar perfil</button>
   </div>
 
+  <!-- v2.9.2 — configuración cotizador cuerdas -->
+  <div class="sec">Cotizador de Cuerdas Entorchadas</div>
+  <div style="padding:4px 16px 8px;font-size:12px;color:var(--text2)">Anchors (precio High Bass por categoría)</div>
+  ${['esp','con','est','pro'].map(id=>{
+    const cat=CUE_CATS.vertical.find(c=>c.id===id);
+    const val=(state.cueAnchors||{})['vertical_'+id]||cat.anchor;
+    return`<div class="settings-row"><div class="sr-title">${cat.label}</div>
+      <input type="number" class="input" style="width:90px;text-align:right" value="${val}"
+        onchange="state.cueAnchors=state.cueAnchors||{};state.cueAnchors['vertical_${id}']=Number(this.value);saveState()"></div>`;
+  }).join('')}
+  ${['baby','med','par','con'].map(id=>{
+    const cat=CUE_CATS.cola.find(c=>c.id===id);
+    const val=(state.cueAnchors||{})['cola_'+id]||cat.anchor;
+    return`<div class="settings-row"><div class="sr-title">${cat.label}</div>
+      <input type="number" class="input" style="width:90px;text-align:right" value="${val}"
+        onchange="state.cueAnchors=state.cueAnchors||{};state.cueAnchors['cola_${id}']=Number(this.value);saveState()"></div>`;
+  }).join('')}
+  <div style="padding:4px 16px 8px;font-size:12px;color:var(--text2)">Factores multiplicadores</div>
+  ${[['mid','Mid Bass (×)',1.18],['bass','Bass (×)',1.38],['dw','Double wound (×)',1.85]].map(([k,lbl,def])=>{
+    const val=(state.cueFactores||{})[k]||def;
+    return`<div class="settings-row"><div class="sr-title">${lbl}</div>
+      <input type="number" class="input" style="width:90px;text-align:right" step="0.01" value="${val}"
+        onchange="state.cueFactores=state.cueFactores||{};state.cueFactores['${k}']=Number(this.value);saveState()"></div>`;
+  }).join('')}
+  <div class="settings-row"><div class="sr-title">Descuento técnicos (%)</div>
+    <input type="number" class="input" style="width:90px;text-align:right" value="${state.cueDescTecnico||15}"
+      onchange="state.cueDescTecnico=Number(this.value);saveState()"></div>
+
   <!-- v2.8.1 — sincronización real vía Apps Script -->
   <div class="sec">Sincronización en la nube</div>
   <div class="settings-row">
@@ -2241,7 +2417,7 @@ function renderConfig(){
 
   <div class="credits-block">
     <div class="credits-logo">🎹</div>
-    <div class="credits-app">PianoTune Pro v2.9.0</div>
+    <div class="credits-app">PianoTune Pro v2.9.4</div>
     <div class="credits-dev">Desarrollado por Sergio L. Ruiz Jones</div>
     <div class="credits-co">Pianos and Pianos — Mazatlán, Sin.</div>
   </div>`;
@@ -2319,7 +2495,7 @@ navigate('inicio');
 // ══ PWA: SERVICE WORKER ══
 if('serviceWorker' in navigator){
   const swCode=`
-const CACHE='pianotune-v2.9'; // v2.9.0
+const CACHE='pianotune-v2.9.4'; // v2.9.4
 const ASSETS=['/'];
 self.addEventListener('install',e=>{
   e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)).then(()=>self.skipWaiting()));
@@ -3118,10 +3294,12 @@ var DT_NAV=[
   {id:'inicio',  label:'Inicio',   icon:'<path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9,22 9,12 15,12 15,22"/>'},
   {id:'clientes',label:'Clientes', icon:'<path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/>'},
   {id:'calendario',label:'Agenda', icon:'<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>'},
+  {id:'cotizador',label:'Cotiz. Cuerdas',icon:'<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>'},
   {id:'servicios',label:'Servicios',icon:'<circle cx="12" cy="12" r="3"/><path d="M19.07 4.93l-1.41 1.41M4.93 4.93l1.41 1.41M12 2v2M12 20v2M2 12h2M20 12h2M16.95 16.95l1.41 1.41M4.93 19.07l1.41-1.41"/>'},
   {id:'productos',label:'Productos',icon:'<path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/>'},
   {id:'presupuesto',label:'Presupuestos',icon:'<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>'},
   {id:'config',  label:'Configuración',icon:'<circle cx="12" cy="12" r="3"/><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58z"/>'},
+  {id:'ayuda',   label:'Manual de ayuda', icon:'<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>'},
 ];
 
 
@@ -3400,6 +3578,453 @@ function renderInicioDT(){
 }
 
 // ══ INIT DESKTOP ══
+
+// ══════════════════════════════════════════════════════════
+// COTIZADOR DE CUERDAS ENTORCHADAS — v2.9.2
+// ══════════════════════════════════════════════════════════
+
+// ── Datos de notas (1=A0/La-0 ... 88=C8/Do-8) ─────────────
+const NOTAS_EN = ['A','A#','B','C','C#','D','D#','E','F','F#','G','G#'];
+const NOTAS_ES = ['La','La#','Si','Do','Do#','Re','Re#','Mi','Fa','Fa#','Sol','Sol#'];
+function notaNombre(n){
+  const idx=n-1, oct=Math.floor(idx/12), ni=idx%12;
+  return `${NOTAS_EN[ni]}${oct} / ${NOTAS_ES[ni]}-${oct}`;
+}
+
+// ── Categorías y límites derivados de 88 escalas Pscale ────
+const CUE_CATS = {
+  vertical: [
+    {id:'esp', label:"Espineta",    anchor:300, dw:11, wound:30},
+    {id:'con', label:"Consola",     anchor:319, dw:11, wound:27},
+    {id:'est', label:"Estudio",     anchor:340, dw:10, wound:27},
+    {id:'pro', label:"Profesional", anchor:361, dw: 9, wound:28},
+  ],
+  cola: [
+    {id:'baby', label:'Baby Grand (hasta 5p4)',    anchor:378, dw:10, wound:25},
+    {id:'med',  label:'Medium Grand (5p4 - 6p2)',  anchor:400, dw: 9, wound:24},
+    {id:'par',  label:'Parlor / Semi (6p2 - 7p4)', anchor:430, dw: 8, wound:23},
+    {id:'con',  label:'Concert Grand (7p4+)',      anchor:531, dw: 7, wound:21},
+  ]
+};
+
+// ── Factores por tipo de cuerda ────────────────────────────
+function getCueFactor(tipo){ // 'dw'|'bass'|'mid'|'high'
+  const s=state.cueFactores||{};
+  if(tipo==='dw')   return s.dw   || 1.85;
+  if(tipo==='bass') return s.bass || 1.38;
+  if(tipo==='mid')  return s.mid  || 1.18;
+  return 1.0; // high bass
+}
+
+function getCueAnchor(pianoTipo, catId){
+  const ovr = (state.cueAnchors||{})[pianoTipo+'_'+catId];
+  if(ovr) return ovr;
+  const cats = CUE_CATS[pianoTipo]||[];
+  return (cats.find(c=>c.id===catId)||{}).anchor||300;
+}
+
+function detectTipoCuerda(nota, cat){
+  if(nota <= cat.dw) return 'dw';
+  const midStart = cat.dw + 1;
+  const midEnd   = cat.wound - 5;
+  const bassEnd  = midStart + 9;
+  if(nota <= bassEnd) return 'bass';
+  if(nota <= midEnd)  return 'mid';
+  return 'high';
+}
+
+function tipoCuerdaLabel(t){
+  return {dw:'Low Bass (Double wound)',bass:'Bass (Single thick)',
+    mid:'Mid Bass (Single mid)',high:'High Bass (Single thin)'}[t]||t;
+}
+
+// ── Estado del cotizador ───────────────────────────────────
+let _cue = {tipo:'vertical', catId:'esp', nota:1, cantidad:1, items:[]};
+
+function renderCotizadorCuerdas(){
+  const tipo = _cue.tipo;
+  const cats = CUE_CATS[tipo];
+  const cat  = cats.find(c=>c.id===_cue.catId) || cats[0];
+  _cue.catId = cat.id;
+
+  // Notas disponibles (1 a cat.wound)
+  const notaOpts = Array.from({length:cat.wound},(_,i)=>i+1)
+    .map(n=>`<option value="${n}" ${n===_cue.nota?'selected':''}>${notaNombre(n)}</option>`)
+    .join('');
+
+  const tipoCuerda = detectTipoCuerda(_cue.nota, cat);
+  const anchor = getCueAnchor(tipo, cat.id);
+  const factor = getCueFactor(tipoCuerda);
+  const precioUnit = Math.round(anchor * factor);
+  const precioTotal = precioUnit * _cue.cantidad;
+
+  const colorTipo = {dw:'var(--danger)',bass:'var(--warning)',mid:'var(--primary)',high:'var(--success)'}[tipoCuerda];
+
+  // Items en cotización
+  const itemsHTML = _cue.items.length===0
+    ? `<div style="padding:16px;text-align:center;color:var(--text3);font-size:13px">Sin cuerdas agregadas</div>`
+    : _cue.items.map((it,i)=>`
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border)">
+        <div style="flex:1">
+          <div style="font-size:13px;font-weight:600">${it.label}</div>
+          <div style="font-size:11px;color:var(--text2)">${it.tipoCuerdaLabel} · ${notaNombre(it.nota)}</div>
+        </div>
+        <div style="font-size:13px;font-weight:700">${it.cant}× ${fmtMoney(it.precioUnit)}</div>
+        <div style="font-weight:700;color:var(--primary)">${fmtMoney(it.precioUnit*it.cant)}</div>
+        <button onclick="quitarCuerdaItem(${i})" style="color:var(--danger);background:none;border:none;font-size:16px;cursor:pointer">✕</button>
+      </div>`).join('');
+
+  const totalCot = _cue.items.reduce((s,it)=>s+it.precioUnit*it.cant,0);
+  const descTec  = Math.round(totalCot * ((state.cueDescTecnico||15)/100));
+
+  document.getElementById('screen-cotizador').innerHTML=`
+  <div class="page-header" style="display:flex;align-items:center;justify-content:space-between;padding-right:16px">
+    <div><div class="page-title">🎵 Cotizador de Cuerdas</div></div>
+    <button onclick="navigate('servicios')" style="font-size:12px;color:var(--text2);background:none;border:none;cursor:pointer">← Servicios</button>
+  </div>
+
+  <div style="padding:0 14px 16px">
+
+    <!-- Selector tipo piano -->
+    <div style="display:flex;gap:8px;margin-bottom:14px">
+      <button onclick="_cue.tipo='vertical';_cue.catId='esp';renderCotizadorCuerdas()"
+        style="flex:1;padding:10px;border-radius:10px;border:2px solid ${tipo==='vertical'?'var(--primary)':'var(--border)'};background:${tipo==='vertical'?'var(--primary-light)':'var(--surface)'};font-weight:700;font-size:14px;cursor:pointer;color:${tipo==='vertical'?'var(--primary)':'var(--text2)'}">
+        🎹 Vertical
+      </button>
+      <button onclick="_cue.tipo='cola';_cue.catId='baby';renderCotizadorCuerdas()"
+        style="flex:1;padding:10px;border-radius:10px;border:2px solid ${tipo==='cola'?'var(--primary)':'var(--border)'};background:${tipo==='cola'?'var(--primary-light)':'var(--surface)'};font-weight:700;font-size:14px;cursor:pointer;color:${tipo==='cola'?'var(--primary)':'var(--text2)'}">
+        🎹 Cola
+      </button>
+    </div>
+
+    <!-- Selector tamaño -->
+    <div style="margin-bottom:14px">
+      <label style="font-size:12px;font-weight:700;color:var(--text2);display:block;margin-bottom:6px">TAMAÑO DEL PIANO</label>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        ${cats.map(ct=>`
+          <button onclick="_cue.catId='${ct.id}';_cue.nota=1;renderCotizadorCuerdas()"
+            style="padding:10px 14px;border-radius:10px;border:2px solid ${ct.id===_cue.catId?'var(--primary)':'var(--border)'};background:${ct.id===_cue.catId?'var(--primary-light)':'var(--surface)'};font-weight:600;font-size:13px;cursor:pointer;text-align:left;color:${ct.id===_cue.catId?'var(--primary)':'var(--text)'}">
+            ${ct.label}
+            <span style="float:right;font-size:11px;color:var(--text3)">${fmtMoney(getCueAnchor(tipo,ct.id))} base</span>
+          </button>`).join('')}
+      </div>
+    </div>
+
+    <!-- Selector nota -->
+    <div style="margin-bottom:14px">
+      <label style="font-size:12px;font-weight:700;color:var(--text2);display:block;margin-bottom:6px">NOTA MUSICAL</label>
+      <select class="input" onchange="_cue.nota=parseInt(this.value);renderCotizadorCuerdas()" style="font-size:14px">
+        ${notaOpts}
+      </select>
+      <div style="margin-top:6px;padding:8px 12px;border-radius:8px;background:${colorTipo}22;display:flex;align-items:center;gap:8px">
+        <div style="width:8px;height:8px;border-radius:50%;background:${colorTipo};flex-shrink:0"></div>
+        <span style="font-size:13px;font-weight:700;color:${colorTipo}">${tipoCuerdaLabel(tipoCuerda)}</span>
+        <span style="font-size:11px;color:var(--text3);margin-left:auto">×${factor.toFixed(2)} factor</span>
+      </div>
+    </div>
+
+    <!-- Cantidad y precio -->
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <label style="font-size:12px;font-weight:700;color:var(--text2)">CANTIDAD</label>
+        <div style="display:flex;align-items:center;gap:10px">
+          <button onclick="_cue.cantidad=Math.max(1,_cue.cantidad-1);renderCotizadorCuerdas()"
+            style="width:32px;height:32px;border-radius:8px;border:1px solid var(--border);background:var(--bg);font-size:18px;cursor:pointer">−</button>
+          <span style="font-size:20px;font-weight:800;min-width:32px;text-align:center">${_cue.cantidad}</span>
+          <button onclick="_cue.cantidad=_cue.cantidad+1;renderCotizadorCuerdas()"
+            style="width:32px;height:32px;border-radius:8px;border:1px solid var(--border);background:var(--bg);font-size:18px;cursor:pointer">+</button>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div style="font-size:12px;color:var(--text3)">${fmtMoney(precioUnit)} c/u</div>
+          <div style="font-size:22px;font-weight:800;color:var(--primary)">${fmtMoney(precioTotal)}</div>
+        </div>
+        <button onclick="agregarCuerdaItem()"
+          style="padding:12px 20px;background:var(--primary);color:#fff;border:none;border-radius:10px;font-weight:700;font-size:14px;cursor:pointer">
+          + Agregar
+        </button>
+      </div>
+    </div>
+
+    <!-- Lista de items -->
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:14px">
+      <div style="padding:12px 14px;border-bottom:1px solid var(--border);font-size:13px;font-weight:700;display:flex;justify-content:space-between;align-items:center">
+        <span>🧾 Cotización</span>
+        ${_cue.items.length>0?`<button onclick="_cue.items=[];renderCotizadorCuerdas()" style="font-size:11px;color:var(--danger);background:none;border:none;cursor:pointer">Limpiar</button>`:''}
+      </div>
+      ${itemsHTML}
+      ${_cue.items.length>0?`
+      <div style="padding:12px 14px;border-top:2px solid var(--border)">
+        <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px">
+          <span>Subtotal</span><span style="font-weight:700">${fmtMoney(totalCot)}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--text2);margin-bottom:10px">
+          <span>Descuento técnico (${state.cueDescTecnico||15}%)</span><span>−${fmtMoney(descTec)}</span>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button onclick="enviarCuerdaWA()"
+            style="flex:1;padding:10px;background:#25d366;color:#fff;border:none;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer">
+            📱 WhatsApp
+          </button>
+          <button onclick="agregarCotAPresupuesto()"
+            style="flex:1;padding:10px;background:var(--primary);color:#fff;border:none;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer">
+            📋 A Presupuesto
+          </button>
+        </div>
+      </div>`:''}
+    </div>
+
+  </div>`;
+}
+
+function agregarCuerdaItem(){
+  const tipo = _cue.tipo;
+  const cats = CUE_CATS[tipo];
+  const cat  = cats.find(c=>c.id===_cue.catId)||cats[0];
+  const tipoCuerda = detectTipoCuerda(_cue.nota, cat);
+  const anchor = getCueAnchor(tipo, cat.id);
+  const factor = getCueFactor(tipoCuerda);
+  const precioUnit = Math.round(anchor * factor);
+  _cue.items.push({
+    label: cat.label,
+    nota: _cue.nota,
+    tipoCuerdaLabel: tipoCuerdaLabel(tipoCuerda),
+    tipoCuerda,
+    cant: _cue.cantidad,
+    precioUnit
+  });
+  _cue.cantidad = 1;
+  renderCotizadorCuerdas();
+  showToast('Cuerda agregada ✓');
+}
+
+function quitarCuerdaItem(i){
+  _cue.items.splice(i,1);
+  renderCotizadorCuerdas();
+}
+
+function enviarCuerdaWA(){
+  const total = _cue.items.reduce((s,it)=>s+it.precioUnit*it.cant,0);
+  const desc  = Math.round(total*((state.cueDescTecnico||15)/100));
+  let txt = '🎵 *Cotización Cuerdas Entorchadas*\nPianos & Pianos — Sergio Ruiz\n\n';
+  _cue.items.forEach(it=>{
+    txt += `• ${it.cant}× ${it.label} (${notaNombre(it.nota)})\n`;
+    txt += `  ${it.tipoCuerdaLabel}: ${fmtMoney(it.precioUnit*it.cant)}\n`;
+  });
+  txt += `\n*Total: ${fmtMoney(total)}*`;
+  if(desc>0) txt += `\nDescuento técnico: −${fmtMoney(desc)}\nTotal c/dto: ${fmtMoney(total-desc)}`;
+  window.open('https://wa.me/?text='+encodeURIComponent(txt),'_blank');
+}
+
+function agregarCotAPresupuesto(){
+  showToast('Función disponible al crear presupuesto ✓');
+}
+
+
+// ══════════════════════════════════════════════════════════
+// IMPRESIÓN TÉRMICA 55mm — ESC/POS via RawBT — v2.9.3
+// Ancho fijo: 32 caracteres
+// ══════════════════════════════════════════════════════════
+
+const TP_W = 32; // caracteres por línea
+
+function tpLine(txt=''){
+  return txt.substring(0,TP_W).padEnd(TP_W)+'\n';
+}
+function tpSep(char='-'){
+  return char.repeat(TP_W)+'\n';
+}
+function tpCenter(txt){
+  const t=txt.substring(0,TP_W);
+  const pad=Math.max(0,Math.floor((TP_W-t.length)/2));
+  return (' '.repeat(pad)+t).padEnd(TP_W)+'\n';
+}
+function tpRight(lbl, val){
+  const v=String(val).substring(0,TP_W-1);
+  const l=String(lbl).substring(0,TP_W-v.length-1);
+  return l+' '.repeat(TP_W-l.length-v.length)+v+'\n';
+}
+function tpFmtMoney(n){
+  return '$'+Number(n).toLocaleString('es-MX',{minimumFractionDigits:0,maximumFractionDigits:0});
+}
+function tpFecha(iso){
+  if(!iso)return'';
+  const [y,m,d]=iso.split('-');
+  const M=['','Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  return `${d}/${M[+m]}/${y}`;
+}
+function tpFolioOS(citaId){
+  return 'OS-'+String(citaId||0).padStart(5,'0');
+}
+
+// ── Generar texto OS para impresión ────────────────────────
+function tpGenerarOS(citaId){
+  const cita = state.citas.find(c=>c.id===citaId);
+  if(!cita)return'';
+  const cli  = getCliente(cita.clienteId)||{nombre:'—'};
+  const pno  = getPiano(cita.clienteId,cita.pianoId)||{};
+  const tec  = state.tecnico||{};
+  const cobro= cita.cobro||{};
+  const items= cita.items||[{nombre:cita.servicio||'Servicio',precio:cita.precio||0}];
+  const total= items.reduce((s,i)=>s+(i.precio||0),0);
+  const iva  = Math.round(total*0.16/1.16);
+  const sub  = total-iva;
+
+  let t='';
+  t+=tpCenter('PIANOS & PIANOS');
+  t+=tpCenter(tec.nombre||'Sergio Ruiz');
+  t+=tpCenter('Tel: '+(tec.telefono||''));
+  t+=tpSep('=');
+  t+=tpCenter('ORDEN DE SERVICIO');
+  t+=tpRight('Folio:',tpFolioOS(citaId));
+  t+=tpRight('Fecha:',tpFecha(cita.fecha||new Date().toISOString().split('T')[0]));
+  t+=tpSep();
+  t+=tpLine('CLIENTE');
+  t+=tpLine((cli.nombre||'').substring(0,TP_W));
+  if(cli.telefono) t+=tpLine('Tel: '+cli.telefono);
+  t+=tpSep();
+  t+=tpLine('INSTRUMENTO');
+  t+=tpLine(((pno.marca||'')+' '+(pno.modelo||'')).trim().substring(0,TP_W));
+  t+=tpLine(((pno.tipo||'')+' '+(pno.subtipo||'')).trim().substring(0,TP_W));
+  if(pno.serie) t+=tpLine('Serie: '+pno.serie);
+  t+=tpSep();
+  t+=tpLine('SERVICIOS REALIZADOS');
+  items.forEach(item=>{
+    const nom=(item.nombre||'').substring(0,22);
+    const pr=tpFmtMoney(item.precio||0);
+    t+=nom.padEnd(TP_W-pr.length)+pr+'\n';
+  });
+  t+=tpSep();
+  t+=tpRight('Subtotal:',tpFmtMoney(sub));
+  t+=tpRight('IVA 16%:',tpFmtMoney(iva));
+  t+=tpSep('=');
+  t+=tpRight('TOTAL:',tpFmtMoney(total));
+  t+=tpSep('=');
+  if(cobro.monto){
+    t+=tpRight('COBRADO:',tpFmtMoney(cobro.monto));
+    t+=tpRight('Forma de pago:',cobro.formaPago||'');
+  }
+  t+=tpSep();
+  t+=tpLine('Tecnico: '+(tec.nombre||''));
+  t+=tpLine('Firma: '+'_'.repeat(TP_W-7));
+  t+=tpSep();
+  t+=tpCenter('Gracias por su preferencia');
+  t+=tpCenter('pianosandpianos.com');
+  t+='\n\n\n'; // avance de papel
+  return t;
+}
+
+// ── Generar texto Presupuesto ──────────────────────────────
+function tpGenerarPresupuesto(presId){
+  const pres = state.presupuestos?.find(p=>p.id===presId);
+  if(!pres)return'';
+  const cli  = getCliente(pres.clienteId)||{nombre:'—'};
+  const pno  = getPiano(pres.clienteId,pres.pianoId)||{};
+  const tec  = state.tecnico||{};
+  const items= pres.items||[];
+  const total= items.reduce((s,i)=>s+(i.precio||0),0);
+
+  let t='';
+  t+=tpCenter('PIANOS & PIANOS');
+  t+=tpCenter(tec.nombre||'Sergio Ruiz');
+  t+=tpSep('=');
+  t+=tpCenter('PRESUPUESTO');
+  t+=tpRight('Folio:','PRE-'+String(presId).padStart(4,'0'));
+  t+=tpRight('Fecha:',tpFecha(pres.fecha||new Date().toISOString().split('T')[0]));
+  t+=tpRight('Vigencia:','30 dias');
+  t+=tpSep();
+  t+=tpLine('CLIENTE');
+  t+=tpLine((cli.nombre||'').substring(0,TP_W));
+  t+=tpSep();
+  t+=tpLine('INSTRUMENTO');
+  t+=tpLine(((pno.marca||'')+' '+(pno.modelo||'')).trim().substring(0,TP_W));
+  t+=tpSep();
+  t+=tpLine('CONCEPTO');
+  items.forEach(item=>{
+    const nom=(item.nombre||'').substring(0,22);
+    const pr=tpFmtMoney(item.precio||0);
+    t+=nom.padEnd(TP_W-pr.length)+pr+'\n';
+  });
+  t+=tpSep('=');
+  t+=tpRight('TOTAL c/IVA:',tpFmtMoney(total));
+  t+=tpSep('=');
+  t+=tpCenter('Precios incluyen IVA');
+  t+=tpCenter('Sujeto a revision del instrumento');
+  t+='\n'+tpLine('Acepto el presupuesto:');
+  t+=tpLine('Firma: '+'_'.repeat(TP_W-7));
+  t+='\n\n\n';
+  return t;
+}
+
+// ── Generar recibo de pago ─────────────────────────────────
+function tpGenerarRecibo(citaId){
+  const cita = state.citas.find(c=>c.id===citaId);
+  if(!cita)return'';
+  const cli  = getCliente(cita.clienteId)||{nombre:'—'};
+  const cobro= cita.cobro||{};
+  const tec  = state.tecnico||{};
+  const total= cobro.monto||cita.precio||0;
+
+  let t='';
+  t+=tpCenter('PIANOS & PIANOS');
+  t+=tpCenter(tec.nombre||'Sergio Ruiz');
+  t+=tpSep('=');
+  t+=tpCenter('RECIBO DE PAGO');
+  t+=tpRight('Recibo:','REC-'+String(citaId).padStart(5,'0'));
+  t+=tpRight('Fecha:',tpFecha(cobro.fechaCobro||new Date().toISOString().split('T')[0]));
+  t+=tpSep();
+  t+=tpLine('Recibi de:');
+  t+=tpLine((cli.nombre||'').substring(0,TP_W));
+  t+=tpSep();
+  t+=tpLine('Concepto:');
+  t+=tpLine((cita.servicio||'Servicio de piano').substring(0,TP_W));
+  t+=tpSep('=');
+  t+=tpRight('IMPORTE:',tpFmtMoney(total));
+  t+=tpRight('Forma de pago:',cobro.formaPago||'Efectivo');
+  t+=tpSep('=');
+  t+='\n'+tpLine('Firma del tecnico:');
+  t+=tpLine('_'.repeat(TP_W));
+  t+='\n'+tpLine('Firma del cliente:');
+  t+=tpLine('_'.repeat(TP_W));
+  t+='\n\n\n';
+  return t;
+}
+
+// ── Enviar a RawBT ─────────────────────────────────────────
+function tpImprimir(texto, titulo){
+  if(!texto){ showToast('Sin datos para imprimir'); return; }
+  // RawBT intent URL — abre la app RawBT en Android con el texto
+  const encoded = encodeURIComponent(texto);
+  const url = 'rawbt:' + encoded;
+  // Intentar abrir RawBT
+  const a = document.createElement('a');
+  a.href = url;
+  a.click();
+  showToast('📠 Enviando a impresora...');
+}
+
+function tpImprimirOS(citaId){
+  tpImprimir(tpGenerarOS(citaId), 'Orden de Servicio');
+}
+function tpImprimirRecibo(citaId){
+  tpImprimir(tpGenerarRecibo(citaId), 'Recibo de Pago');
+}
+function tpImprimirPresupuesto(presId){
+  tpImprimir(tpGenerarPresupuesto(presId), 'Presupuesto');
+}
+
+// ── Vista previa en modal ──────────────────────────────────
+function tpVistaPrevia(texto, titulo, printFn){
+  if(!texto){ showToast('Sin datos'); return; }
+  const lines = texto.split('\n').map(l=>`<div style="font-family:monospace;font-size:12px;white-space:pre;line-height:1.4">${l}</div>`).join('');
+  openModal(`<div class="modal-title">📄 ${titulo}</div>
+    <div style="background:#f5f5f5;border-radius:8px;padding:12px;max-height:50vh;overflow-y:auto;border:1px solid var(--border)">${lines}</div>
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <button onclick="(${printFn})()" class="btn btn-primary btn-full">📠 Imprimir (RawBT)</button>
+    </div>`);
+}
+
 // ══ INIT AUTO-PAUSA Y NOTIFICACIONES ══
 // Check auto-pausa cada minuto
 setInterval(checkAutoPausa,60000);
