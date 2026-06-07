@@ -625,10 +625,23 @@ async function pullFromCloud(){
     if(json.ok&&json.data&&json.data!=='{}'){
       const remote=JSON.parse(json.data);
       if((remote._syncTs||0)>(state._syncTs||0)){
-        migrate(remote);Object.assign(state,remote);
+        migrate(remote);
+        // Catálogo más completo siempre gana — no pisar productos/servicios si local tiene más
+        const localProds=state.productos||[];
+        const localSvcs=state.servicios||[];
+        Object.assign(state,remote);
+        if(localProds.length>(state.productos||[]).length){
+          state.productos=localProds;
+          state._needsPush=true; // marcar para reenviar a la nube
+        }
+        if(localSvcs.length>(state.servicios||[]).length){
+          state.servicios=localSvcs;
+          state._needsPush=true;
+        }
         try{localStorage.setItem(SK,JSON.stringify(state));}catch(e){}
         recalcEstados();renderScreen(currentScreen);
         showToast('☁️ Datos actualizados desde la nube ✓');
+        if(state._needsPush){state._needsPush=false;setTimeout(pushToCloud,2000);}
       }
     }
     // v2.8.3 — marcar que ya hicimos pull, habilitar push
