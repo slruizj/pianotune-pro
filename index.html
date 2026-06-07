@@ -88,10 +88,11 @@ textarea.input{resize:vertical;min-height:68px}
 .stat-label{font-size:11px;color:var(--text2);margin-top:2px}
 /* CALENDAR */
 .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;padding:0 14px}
-.cal-day{aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:50%;font-size:13px;cursor:pointer;position:relative}
-.cal-day.today{background:var(--primary);color:#fff;font-weight:700}
-.cal-day.other-month{color:var(--text3)}
-.cal-day-dot{width:4px;height:4px;border-radius:50%;position:absolute;bottom:4px}
+.cal-day{min-height:64px;display:flex;flex-direction:column;align-items:flex-start;padding:3px 3px 2px;border-radius:6px;font-size:12px;cursor:pointer;border:1px solid var(--border)}
+.cal-day.today .cal-dn{background:var(--primary);color:#fff;border-radius:50%;font-weight:700}
+.cal-day.other-month{opacity:.35}
+.cal-dn{width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:11px;border-radius:50%}
+.cal-day-chip{font-size:9px;padding:1px 3px;border-radius:3px;margin-top:1px;width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;box-sizing:border-box}
 .cal-weekdays{display:grid;grid-template-columns:repeat(7,1fr);padding:8px 14px 4px;text-align:center;font-size:11px;font-weight:700;color:var(--text3)}
 /* EVENTS */
 .event-item{display:flex;align-items:center;gap:10px;padding:11px 14px;background:var(--surface);margin:0 16px 8px;border-radius:var(--radius);border-left:4px solid transparent;cursor:pointer}
@@ -285,7 +286,7 @@ textarea.input{resize:vertical;min-height:68px}
     ☁️ <span id="dt-sync-txt">Listo</span>
   </div>
   <div style="padding:10px 16px 14px">
-    <div style="color:rgba(255,255,255,.35);font-size:10px;font-weight:600;letter-spacing:.4px">PianoTune Pro v2.9.5</div>
+    <div style="color:rgba(255,255,255,.35);font-size:10px;font-weight:600;letter-spacing:.4px">PianoTune Pro v2.9.8</div>
   </div>
 </div>
 
@@ -473,6 +474,46 @@ function defaultState(){
       {id:282,clave:'DKV-MAN-G',nombre:"Regulación y entonación cola G667",precio:13000,duracion:480,descripcion:"Servicio completo piano de cola G667.",categoria:'dkv',subtipo:'dkv'},
       {id:283,clave:'CAL-COL',nombre:"Calibración de maquinaria — piano de cola",precio:7590,duracion:382,descripcion:"Regulación completa piano de cola. Incluye todos los parámetros de maquinaria.",categoria:'regulacion',subtipo:'cola',subItems:["RC-ESP-TEC","RC-FIJ-BRK","RC-ALT-BLA","RC-ALT-NEG","RC-FRI-PUN","RC-PER-BAL","RC-PRO-BLA","RC-PUL-PUN","RC-ALI-BAL","RC-ALI-MAR","RC-ANG-MAR","RC-VIA-MAR","RC-ALI-JAC","RC-ATR-MAR","RC-CAI","RC-DOB-ESC","RC-ESC","RC-DIS-GOP","RC-MUE-RES","RC-NIV-MAR","RC-PAL-REP","RC-PED-SOS","RC-PED-SUA","RC-PED-SUS","RC-PRO-NEG","RC-RIE-APA","RC-SUS-GRA"],esAgrupado:true},
       {id:284,clave:'CAL-VER',nombre:"Calibración de maquinaria — piano vertical",precio:2770,duracion:235,descripcion:"Regulación completa piano vertical. Incluye todos los parámetros de maquinaria.",categoria:'regulacion',subtipo:'vertical',subItems:["RV-ESP-TEC","RV-ALT-BLA","RV-ALT-NEG","RV-FRI-PUN","RV-PER-BAL","RV-PRO-BLA","RV-PIL","RV-ALI-MAR","RV-ANG-MAR","RV-VIA-MAR","RV-ALI-BAL","RV-DIS-GOP","RV-ESC","RV-ATR-MAR","RV-PRO-NEG","RV-PED-SOR","RV-PED-SUA","RV-PED-SUS"],esAgrupado:true},
+      // ── Limpieza (nueva categoría) ──────────────────────────
+      {id:285,clave:'LIM-EXT',nombre:"Limpieza exterior y gabinete",precio:0,duracion:45,descripcion:"Limpieza completa del gabinete exterior. Incluye partes visibles.",categoria:'limpieza',subtipo:'ambos'},
+      {id:286,clave:'LIM-CRD',nombre:"Limpieza de cuerdas y tabla armónica",precio:0,duracion:60,descripcion:"Limpieza de arpa, cuerdas y tabla armónica. Requiere desmontaje de maquinaria.",categoria:'limpieza',subtipo:'ambos'},
+      {id:287,clave:'LIM-TCL',nombre:"Pulido de teclas",precio:0,duracion:45,descripcion:"Pulido y limpieza de teclas blancas y negras.",categoria:'limpieza',subtipo:'ambos'},
+      {id:288,clave:'LIM-HER',nombre:"Pulido de herrajes y clavijas",precio:0,duracion:30,descripcion:"Limpieza y pulido de herrajes metálicos y cabezas de clavijas.",categoria:'limpieza',subtipo:'ambos'},
+      {id:289,clave:'LIM-MUE',nombre:"Pulido y encerado de mueble",precio:0,duracion:60,descripcion:"Tratamiento de superficie del mueble con pulimento y cera.",categoria:'limpieza',subtipo:'ambos'},
+      {id:290,clave:'LIM-ENC',nombre:"Encerado y abrillantado exterior",precio:0,duracion:60,descripcion:"Abrillantado de acabado brillante o satinado del mueble.",categoria:'limpieza',subtipo:'ambos'},
+      {id:291,clave:'LIM-ACU',nombre:"Pulido de cuerdas",precio:0,duracion:45,descripcion:"Limpieza y pulido de cuerdas de acero.",categoria:'limpieza',subtipo:'ambos'},
+      // ── Reparación — nuevos ──────────────────────────────────
+      {id:292,clave:'REP-APA',nombre:"Reemplazo de apagador(es) / reconstrucción",precio:0,duracion:30,descripcion:"Reemplazo individual o reconstrucción de fieltros y guías de apagador.",categoria:'reparacion',subtipo:'ambos'},
+      {id:293,clave:'REP-TCB',nombre:"Reparación / reconstrucción de tecla blanca",precio:0,duracion:20,descripcion:"Reemplazo de tapa o reconstrucción de tecla blanca dañada.",categoria:'reparacion',subtipo:'ambos'},
+      {id:294,clave:'REP-BAL',nombre:"Reemplazo de balancines",precio:0,duracion:45,descripcion:"Sustitución de balancines defectuosos en maquinaria.",categoria:'reparacion',subtipo:'ambos'},
+      {id:295,clave:'REP-EJE',nombre:"Reemplazo de ejes de martinetes / wippens",precio:0,duracion:60,descripcion:"Sustitución de pines y ejes en martinetes o wippens.",categoria:'reparacion',subtipo:'ambos'},
+      {id:296,clave:'REP-HIL',nombre:"Reemplazo de hilos de martinetes",precio:0,duracion:45,descripcion:"Reemplazo de hilos de seda o sintéticos en martinetes.",categoria:'reparacion',subtipo:'ambos'},
+      {id:297,clave:'REP-RES',nombre:"Reemplazo de resortes de martinetes",precio:0,duracion:30,descripcion:"Sustitución de resortes de retorno de martinetes.",categoria:'reparacion',subtipo:'ambos'},
+      {id:298,clave:'REP-FIE',nombre:"Reemplazo de fieltros de maquinaria",precio:0,duracion:60,descripcion:"Sustitución de fieltros desgastados en maquinaria.",categoria:'reparacion',subtipo:'ambos'},
+      {id:299,clave:'REP-TIR',nombre:"Reemplazo de tiras de fieltro (sordina/descanso)",precio:0,duracion:30,descripcion:"Sustitución de tiras de fieltro de sordina o de descanso.",categoria:'reparacion',subtipo:'ambos'},
+      {id:300,clave:'REP-COR',nombre:"Reemplazo de cordones de wippens",precio:0,duracion:45,descripcion:"Sustitución de cordones de cuero o tela en wippens.",categoria:'reparacion',subtipo:'cola'},
+      {id:301,clave:'REP-CEN',nombre:"Reemplazo de centros de maquinaria",precio:0,duracion:90,descripcion:"Sustitución de centros de martinetes, wippens o balancines.",categoria:'reparacion',subtipo:'ambos'},
+      {id:302,clave:'REP-CLA',nombre:"Reemplazo de clavija de afinación",precio:0,duracion:30,descripcion:"Extracción y sustitución de clavija dañada o floja.",categoria:'reparacion',subtipo:'ambos'},
+      {id:303,clave:'REP-BLA',nombre:"Reemplazo de cuerda blanca",precio:0,duracion:20,descripcion:"Sustitución de cuerda de acero individual. Sin materiales.",categoria:'reparacion',subtipo:'ambos'},
+      {id:304,clave:'REP-PED',nombre:"Reparación de pedalier completo",precio:0,duracion:60,descripcion:"Reparación mecánica del sistema de pedales.",categoria:'reparacion',subtipo:'ambos'},
+      {id:305,clave:'REP-TAR',nombre:"Reparación de tabla armónica / puente",precio:0,duracion:120,descripcion:"Reparación de grietas, cuñas o despegue en tabla armónica o puente.",categoria:'reparacion',subtipo:'ambos'},
+      {id:306,clave:'REP-ARP',nombre:"Reparación y barnizado de arpa",precio:0,duracion:180,descripcion:"Reparación estructural y acabado del arpa metálica.",categoria:'reparacion',subtipo:'ambos'},
+      {id:307,clave:'REP-DES',nombre:"Instalación de deshumidificador",precio:0,duracion:60,descripcion:"Instalación de sistema Dampp-Chaser o similar.",categoria:'reparacion',subtipo:'ambos'},
+      {id:308,clave:'REP-CER',nombre:"Instalación de cerradura",precio:0,duracion:30,descripcion:"Instalación o reemplazo de cerradura de tapa o caída.",categoria:'reparacion',subtipo:'ambos'},
+      // ── Restauración (nueva categoría) ──────────────────────
+      {id:309,clave:'RST-BAR',nombre:"Restauración de acabado / barniz del mueble",precio:0,duracion:480,descripcion:"Restauración completa de acabado. Incluye preparación y aplicación.",categoria:'restauracion',subtipo:'ambos'},
+      {id:310,clave:'RST-TCL',nombre:"Restauración de teclas",precio:0,duracion:120,descripcion:"Limpieza profunda, blanqueo o sustitución de cubiertas de teclas.",categoria:'restauracion',subtipo:'ambos'},
+      {id:311,clave:'RST-TEC',nombre:"Reconstrucción de teclado",precio:0,duracion:240,descripcion:"Reconstrucción completa del conjunto de teclado.",categoria:'restauracion',subtipo:'ambos'},
+      {id:312,clave:'RST-ENC',nombre:"Reconstrucción de encordado",precio:0,duracion:480,descripcion:"Reemplazo completo de cuerdas. Sin materiales.",categoria:'restauracion',subtipo:'ambos'},
+      {id:313,clave:'RST-TEF',nombre:"Aplicación de Teflón",precio:0,duracion:90,descripcion:"Tratamiento de maquinaria con lubricante de Teflón.",categoria:'restauracion',subtipo:'ambos'},
+      {id:314,clave:'RST-QUI',nombre:"Aplicación de químico protector de cuerdas",precio:0,duracion:45,descripcion:"Tratamiento anticorosivo en cuerdas de acero y bordones.",categoria:'restauracion',subtipo:'ambos'},
+      {id:315,clave:'RST-ANT',nombre:"Tratamiento antipolilla",precio:0,duracion:30,descripcion:"Aplicación de tratamiento preventivo contra polilla en fieltros.",categoria:'restauracion',subtipo:'ambos'},
+      {id:316,clave:'RST-ACU',nombre:"Tratamiento acústico",precio:0,duracion:60,descripcion:"Ajuste y optimización de parámetros acústicos del instrumento.",categoria:'restauracion',subtipo:'ambos'},
+      // ── Sistemas especiales (nueva categoría) ───────────────
+      {id:317,clave:'SIS-QRS-SVC',nombre:"Servicio y mantenimiento sistema QRS",precio:0,duracion:90,descripcion:"Servicio completo de sistema QRS. Limpieza, calibración y pruebas.",categoria:'sistemas',subtipo:'ambos'},
+      {id:318,clave:'SIS-QRS-DIA',nombre:"Diagnóstico sistema QRS",precio:0,duracion:45,descripcion:"Diagnóstico y reporte de estado del sistema QRS.",categoria:'sistemas',subtipo:'ambos'},
+      {id:319,clave:'SIS-PD',nombre:"Mantenimiento sistema Piano Disc",precio:0,duracion:90,descripcion:"Servicio completo de sistema Piano Disc.",categoria:'sistemas',subtipo:'ambos'},
+      {id:320,clave:'SIS-TCO',nombre:"Cambio de tira de contacto",precio:0,duracion:60,descripcion:"Sustitución de tira de contacto en teclado digital/híbrido.",categoria:'sistemas',subtipo:'ambos'},
     ],
     productos:[
       {id:1,nombre:'Cuerdas de bordón Roslau',precio:350,stock:8,proveedor:'Musical Monterrey'},
@@ -527,6 +568,14 @@ function migrate(s){
     s.servicios=defaultState().servicios;
     s.catalogVersion='fy2526';
     if(s.nextId<300)s.nextId=300;
+  }
+  // Migración catálogo v3 (v2.9.8) — agregar nuevas categorías
+  if(s.catalogVersion!=='fy2527'){
+    const existIds=new Set(s.servicios.map(sv=>sv.id));
+    const nuevos=defaultState().servicios.filter(sv=>sv.id>=285&&!existIds.has(sv.id));
+    nuevos.forEach(sv=>s.servicios.push(sv));
+    s.catalogVersion='fy2527';
+    if(s.nextId<325)s.nextId=325;
   }
   // Migrate citas to new state model
   s.citas.forEach(c=>{
@@ -1416,8 +1465,14 @@ function renderCalMensual(){
     const iso=`${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
     const isToday=iso===todayStr;
     const citas=byDate[iso]||[];
-    const dots=[...new Set(citas.map(c=>citaColor(c)))].slice(0,3).map(col=>`<div class="cal-day-dot" style="background:${col==='green'?'var(--success)':col==='blue'?'var(--primary)':col==='red'?'var(--danger)':'var(--text3)'}"></div>`).join('');
-    days+=`<div class="cal-day${isToday?' today':''}" onclick="showModalDia('${iso}')">${d}${dots}</div>`;
+    const chips=citas.slice(0,3).map(ci=>{
+      const cli2=getCliente(ci.clienteId);
+      const col2=citaColor(ci);
+      const bg=col2==='green'?'var(--success)':col2==='blue'?'var(--primary)':col2==='red'?'var(--danger)':'var(--text3)';
+      const nm=(cli2?cli2.nombre:'?').split(' ')[0];
+      return `<div class="cal-day-chip" style="background:${bg};color:#fff" onclick="event.stopPropagation();showModalDetalleCita(${ci.id})">${ci.hora} ${nm}</div>`;
+    }).join('');
+    days+=`<div class="cal-day${isToday?' today':''}" onclick="showModalDia('${iso}')"><div class="cal-dn">${d}</div>${chips}</div>`;
   }
   return`<div class="week-nav">
     <button class="icon-btn" onclick="calDate=new Date(calDate.getFullYear(),calDate.getMonth()-1,1);renderCalendario()">‹</button>
@@ -1567,8 +1622,8 @@ function cancelarCita(id){if(!confirm('¿Cancelar esta cita?'))return;state.cita
 function buildSvcSelector(wrapperId, inputId, priceId, preSelId){
   const agrupClaves = state.servicios.filter(s=>s.esAgrupado).flatMap(s=>s.subItems||[]);
   const visibles = state.servicios.filter(s => !agrupClaves.includes(s.clave));
-  const cats = ['afinacion','reparacion','regulacion','entonacion','dkv'];
-  const catLabels = {afinacion:'🎵 Afinación',reparacion:'🔧 Reparación',regulacion:'⚙️ Regulación',entonacion:'🎼 Entonación',dkv:'🎹 Disklavier'};
+  const cats = ['afinacion','reparacion','regulacion','entonacion','dkv','limpieza','restauracion','sistemas'];
+  const catLabels = {afinacion:'🎵 Afinación',reparacion:'🔧 Reparación',regulacion:'⚙️ Regulación',entonacion:'🎼 Entonación',dkv:'🎹 Disklavier',limpieza:'🧹 Limpieza',restauracion:'🪚 Restauración',sistemas:'⚡ Sistemas'};
   const subBadge = {cola:'COLA',vertical:'VER',ambos:'',dkv:'DKV'};
   let activeCat = 'afinacion';
 
@@ -1576,7 +1631,7 @@ function buildSvcSelector(wrapperId, inputId, priceId, preSelId){
     const wrap = document.getElementById(wrapperId); if(!wrap) return;
     const filtered = activeCat === 'todos' ? visibles : visibles.filter(s=>s.categoria===activeCat);
     wrap.innerHTML = `
-      <div style="display:flex;gap:5px;overflow-x:auto;padding:2px 0 8px;scrollbar-width:none">
+      <div style="display:flex;gap:5px;flex-wrap:wrap;padding:2px 0 8px">
         ${cats.map(c=>`<button type="button" onclick="svcCatClick('${wrapperId}','${inputId}','${priceId}','${preSelId||''}','${c}')" style="flex-shrink:0;padding:4px 10px;border-radius:20px;border:1.5px solid ${activeCat===c?'var(--primary)':'var(--border)'};background:${activeCat===c?'var(--primary)':'var(--surface)'};color:${activeCat===c?'#fff':'var(--text2)'};font-size:11px;font-weight:600;cursor:pointer">${catLabels[c]}</button>`).join('')}
       </div>
       <select class="input select" id="${inputId}" onchange="svcSelChange('${inputId}','${priceId}')" style="margin-top:0">
@@ -1594,14 +1649,14 @@ function buildSvcSelector(wrapperId, inputId, priceId, preSelId){
 }
 function svcCatClick(wrapperId, inputId, priceId, preSelId, cat){
   const wrap = document.getElementById(wrapperId); if(!wrap) return;
-  const cats = ['afinacion','reparacion','regulacion','entonacion','dkv'];
-  const catLabels = {afinacion:'🎵 Afinación',reparacion:'🔧 Reparación',regulacion:'⚙️ Regulación',entonacion:'🎼 Entonación',dkv:'🎹 Disklavier'};
+  const cats = ['afinacion','reparacion','regulacion','entonacion','dkv','limpieza','restauracion','sistemas'];
+  const catLabels = {afinacion:'🎵 Afinación',reparacion:'🔧 Reparación',regulacion:'⚙️ Regulación',entonacion:'🎼 Entonación',dkv:'🎹 Disklavier',limpieza:'🧹 Limpieza',restauracion:'🪚 Restauración',sistemas:'⚡ Sistemas'};
   const subBadge = {cola:'COLA',vertical:'VER',ambos:'',dkv:'DKV'};
   const agrupClaves = state.servicios.filter(s=>s.esAgrupado).flatMap(s=>s.subItems||[]);
   const visibles = state.servicios.filter(s => !agrupClaves.includes(s.clave));
   const filtered = visibles.filter(s=>s.categoria===cat);
   wrap.innerHTML = `
-    <div style="display:flex;gap:5px;overflow-x:auto;padding:2px 0 8px;scrollbar-width:none">
+    <div style="display:flex;gap:5px;flex-wrap:wrap;padding:2px 0 8px">
       ${cats.map(c=>`<button type="button" onclick="svcCatClick('${wrapperId}','${inputId}','${priceId}','${preSelId||''}','${c}')" style="flex-shrink:0;padding:4px 10px;border-radius:20px;border:1.5px solid ${cat===c?'var(--primary)':'var(--border)'};background:${cat===c?'var(--primary)':'var(--surface)'};color:${cat===c?'#fff':'var(--text2)'};font-size:11px;font-weight:600;cursor:pointer">${catLabels[c]}</button>`).join('')}
     </div>
     <select class="input select" id="${inputId}" onchange="svcSelChange('${inputId}','${priceId}')" style="margin-top:0">
@@ -1701,8 +1756,8 @@ function crearCita(){
 }
 
 // ══ SCREEN: SERVICIOS ══
-var CAT_LABELS={afinacion:'🎵 Afinación',reparacion:'🔧 Reparación',regulacion:'⚙️ Regulación',entonacion:'🎼 Entonación',dkv:'🎹 Disklavier'};
-var CAT_ORDER=['afinacion','reparacion','regulacion','entonacion','dkv'];
+var CAT_LABELS={afinacion:'🎵 Afinación',reparacion:'🔧 Reparación',regulacion:'⚙️ Regulación',entonacion:'🎼 Entonación',dkv:'🎹 Disklavier',limpieza:'🧹 Limpieza',restauracion:'🪚 Restauración',sistemas:'⚡ Sistemas'};
+var CAT_ORDER=['afinacion','reparacion','regulacion','entonacion','dkv','limpieza','restauracion','sistemas'];
 var SUB_BADGE={cola:'<span style="font-size:10px;padding:1px 6px;border-radius:10px;background:#e8f0fe;color:#1a56db;font-weight:700">COLA</span>',vertical:'<span style="font-size:10px;padding:1px 6px;border-radius:10px;background:#e6f4ea;color:#0f9d58;font-weight:700">VERTICAL</span>',ambos:'<span style="font-size:10px;padding:1px 6px;border-radius:10px;background:#f0f0f0;color:#6e6e73;font-weight:700">AMBOS</span>',dkv:'<span style="font-size:10px;padding:1px 6px;border-radius:10px;background:#fef7e0;color:#f29900;font-weight:700">DKV</span>'};
 let _svcFiltro='todos';
 function renderServicios(){
@@ -1725,7 +1780,7 @@ function renderServicios(){
       <div><div class="page-title">Catálogo de servicios</div><div class="page-sub">${shown.length} servicios</div></div>
       <button onclick="navigate('cotizador')" style="display:flex;align-items:center;gap:5px;padding:7px 13px;border-radius:20px;background:var(--primary);border:none;color:#fff;font-weight:700;font-size:12px;cursor:pointer;flex-shrink:0">🎵 Cotizar</button>
     </div>
-    <div style="display:flex;gap:6px;overflow-x:auto;padding:8px 0 2px;scrollbar-width:none">
+    <div style="display:flex;gap:6px;flex-wrap:wrap;padding:8px 0 2px">
       ${['todos',...cats].map(c=>`<button onclick="_svcFiltro='${c}';renderServicios()" style="flex-shrink:0;padding:5px 11px;border-radius:20px;border:1.5px solid ${_svcFiltro===c?'var(--primary)':'var(--border)'};background:${_svcFiltro===c?'var(--primary)':'var(--surface)'};color:${_svcFiltro===c?'#fff':'var(--text2)'};font-size:12px;font-weight:600;cursor:pointer">${c==='todos'?'Todos':CAT_LABELS[c]||c}</button>`).join('')}
     </div>
   </div>
@@ -1859,6 +1914,9 @@ function showModalNuevoServicio(){openModal(`<div class="modal-title">Nuevo serv
       <option value="regulacion">⚙️ Regulación</option>
       <option value="entonacion">🎼 Entonación</option>
       <option value="dkv">🎹 Disklavier</option>
+      <option value="limpieza">🧹 Limpieza</option>
+      <option value="restauracion">🪚 Restauración</option>
+      <option value="sistemas">⚡ Sistemas</option>
     </select></div>
   <div class="input-group"><label class="input-label">Tipo de piano</label>
     <select class="input select" id="ns-sub">
@@ -1875,7 +1933,7 @@ function showModalEditarServicio(id){const s=state.servicios.find(x=>x.id===id);
   <div class="input-group"><label class="input-label">Duración (horas)</label><input type="number" class="input" id="es-d" value="${+(s.duracion/60).toFixed(1)}" step="0.5" min="0.5"></div>
   <div class="input-group"><label class="input-label">Categoría</label>
     <select class="input select" id="es-cat">
-      ${['afinacion','reparacion','regulacion','entonacion','dkv'].map(c=>`<option value="${c}" ${s.categoria===c?'selected':''}>${CAT_LABELS[c]||c}</option>`).join('')}
+      ${['afinacion','reparacion','regulacion','entonacion','dkv','limpieza','restauracion','sistemas'].map(c=>`<option value="${c}" ${s.categoria===c?'selected':''}>${CAT_LABELS[c]||c}</option>`).join('')}
     </select></div>
   <div class="input-group"><label class="input-label">Tipo de piano</label>
     <select class="input select" id="es-sub">
@@ -1893,47 +1951,104 @@ function guardarServicio(id){const s=state.servicios.find(x=>x.id===id);
   saveState();closeModal();showToast('Actualizado ✓');renderServicios();}
 function eliminarServicio(id){if(!confirm('¿Eliminar?'))return;state.servicios=state.servicios.filter(x=>x.id!==id);saveState();renderServicios();}
 
+const CATALOGO_INICIAL_PRODUCTOS = [{"clave": "PIA-001", "nombre": "Piano Lifter Escorpion", "categoria": "Accesorios", "marca": "Pianos & Pianos", "modelo": "", "precioCompra": 0, "precio": 30000, "stock": 0, "stockMinimo": 0, "proveedor": "Pianos & Pianos", "notas": ""}, {"clave": "COR-002", "nombre": "Correas para transporte", "categoria": "Accesorios", "marca": "Pianos & Pianos", "modelo": "", "precioCompra": 0, "precio": 1500, "stock": 0, "stockMinimo": 0, "proveedor": "Pianos & Pianos", "notas": ""}, {"clave": "PIA-003", "nombre": "Piano tilter", "categoria": "Accesorios", "marca": "Pianos & Pianos", "modelo": "", "precioCompra": 0, "precio": 15000, "stock": 0, "stockMinimo": 0, "proveedor": "Pianos & Pianos", "notas": ""}, {"clave": "CUE-004", "nombre": "Cuerda de acero Vertical C3 a C4", "categoria": "Cuerdas", "marca": "Roslau", "modelo": "", "precioCompra": 0, "precio": 150, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": "Para vertical"}, {"clave": "CUE-005", "nombre": "Cuerda de acero Vertical C4 a C5", "categoria": "Cuerdas", "marca": "Roslau", "modelo": "", "precioCompra": 0, "precio": 120, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": "Para vertical"}, {"clave": "CUE-006", "nombre": "Cuerda de acero Vertical C5 a C6", "categoria": "Cuerdas", "marca": "Roslau", "modelo": "", "precioCompra": 0, "precio": 100, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": "Para vertical"}, {"clave": "CUE-007", "nombre": "Cuerda de acero Vertical C6 a C7", "categoria": "Cuerdas", "marca": "Roslau", "modelo": "", "precioCompra": 0, "precio": 80, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": "Para vertical"}, {"clave": "CUE-008", "nombre": "Cuerda de acero Vertical C7 a C8", "categoria": "Cuerdas", "marca": "Roslau", "modelo": "", "precioCompra": 0, "precio": 50, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": "Para vertical"}, {"clave": "CUE-009", "nombre": "Cuerda de acero Cola C3 a C4", "categoria": "Cuerdas", "marca": "Roslau", "modelo": "", "precioCompra": 0, "precio": 200, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": "Para Cola"}, {"clave": "CUE-010", "nombre": "Cuerda de acero Cola C4 a C5", "categoria": "Cuerdas", "marca": "Roslau", "modelo": "", "precioCompra": 0, "precio": 180, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": "Para Cola"}, {"clave": "CUE-011", "nombre": "Cuerda de acero Cola C5 a C6", "categoria": "Cuerdas", "marca": "Roslau", "modelo": "", "precioCompra": 0, "precio": 150, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": "Para Cola"}, {"clave": "CUE-012", "nombre": "Cuerda de acero Cola C6 a C7", "categoria": "Cuerdas", "marca": "Roslau", "modelo": "", "precioCompra": 0, "precio": 120, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": "Para Cola"}, {"clave": "CUE-013", "nombre": "Cuerda de acero Cola C7 a C8", "categoria": "Cuerdas", "marca": "Roslau", "modelo": "", "precioCompra": 0, "precio": 80, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": "Para Cola"}, {"clave": "ALM-014", "nombre": "Almohadillas para damp chaser pad", "categoria": "Damp Chaser", "marca": "Damp Chaser", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "BAR-015", "nombre": "Barra deshumidificadora de 15w 18\"", "categoria": "Damp Chaser", "marca": "Damp Chaser", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "BAR-016", "nombre": "Barra deshumidificadora de 25w 24\"", "categoria": "Damp Chaser", "marca": "Damp Chaser", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "BAR-017", "nombre": "Barra deshumidificadora de 50w 48\"", "categoria": "Damp Chaser", "marca": "Damp Chaser", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "HUM-018", "nombre": "Humidificador Pianos Life Saver", "categoria": "Damp Chaser", "marca": "Damp Chaser", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "HUM-019", "nombre": "Humidistat", "categoria": "Damp Chaser", "marca": "Damp Chaser", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": ""}, {"clave": "LIQ-020", "nombre": "Liquido de tratamiento para el agua de damp chaser", "categoria": "Damp Chaser", "marca": "Damp Chaser", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "PIA-021", "nombre": "Piano Life Saver System 4 Partes", "categoria": "Damp Chaser", "marca": "Damp Chaser", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "SIS-022", "nombre": "Sistema de deshumidificacion Damp Chaser 3 partes", "categoria": "Damp Chaser", "marca": "Damp Chaser", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "SIS-023", "nombre": "Sistema de deshumidificacion Damp Chaser 4 partes", "categoria": "Damp Chaser", "marca": "Damp Chaser", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "TRA-024", "nombre": "Tratamiento de agua para sistema dampp chaser", "categoria": "Damp Chaser", "marca": "Damp Chaser", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "TUB-025", "nombre": "Tubo irrigador para Damp chaser", "categoria": "Damp Chaser", "marca": "Damp Chaser", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "ACT-026", "nombre": "Action cloth grosor 1", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "ACT-027", "nombre": "Action cloth grosor 2", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "ACT-028", "nombre": "Action cloth grosor 3", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "ACT-029", "nombre": "Action cloth grosor 4", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "ACT-030", "nombre": "Action cloth grosor 5", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "ACT-031", "nombre": "Action cloth grosor 6", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "FIE-032", "nombre": "Fieltro de descanso de martinetes", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "FIE-033", "nombre": "Fieltro de sordina", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "FIE-034", "nombre": "Fieltro de teclado Tamaño 1", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "FIE-035", "nombre": "Fieltro de teclado Tamaño 2", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "FIE-036", "nombre": "Fieltro de teclado Tamaño 3", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "FIE-037", "nombre": "Fieltro de teclado Tamaño 4", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "FIE-038", "nombre": "Fieltro de teclado Tamaño 5", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "FIE-039", "nombre": "Fieltro para apagadores", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "FIE-040", "nombre": "Fieltros para teclado", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "GAM-041", "nombre": "Gamusa para backcheck", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "GAM-042", "nombre": "Gamuza de atrape", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "GAM-043", "nombre": "Gamuza para atril", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "GAM-044", "nombre": "Gamuza para nuez", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "PAÑ-045", "nombre": "Paño de lana protector de cuerdas", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "SOR-046", "nombre": "Sordina", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "TIR-047", "nombre": "Tira de fieltro", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "PAÑ-048", "nombre": "Paño de microfibra para limpieza", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 100, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "ACE-049", "nombre": "Acetona", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 120, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "EST-050", "nombre": "Estopa", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 100, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "TRA-051", "nombre": "Trapo Sontara azul", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 20, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "POL-052", "nombre": "Poliuretano negro", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 800, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "POL-053", "nombre": "Poliuretano transparente", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 800, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "PIR-054", "nombre": "Pirmer 1k", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 400, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "RED-055", "nombre": "Reductor Primer 1k", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 300, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "PRI-056", "nombre": "Primer 2K", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 800, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "RED-057", "nombre": "Reductor Primer 2k", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 300, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "CAT-058", "nombre": "Catalizador iniversal", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 300, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "RED-059", "nombre": "Reductor poliuretano", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "BAS-060", "nombre": "Base color", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "RED-061", "nombre": "Reductor base color", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "RES-062", "nombre": "Resanador poliester", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "RES-063", "nombre": "Resanador spot putty", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "FON-064", "nombre": "Fondo poliuretano", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "RED-065", "nombre": "Reductor fondo poliuretano", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "POL-066", "nombre": "Poliuretano base agua", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "FON-067", "nombre": "Fondo poliester", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "BAR-068", "nombre": "Barniz poliester negro", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "BAR-069", "nombre": "Barniz poliester transparente", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "ACE-070", "nombre": "Acelerador poliester", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "CAT-071", "nombre": "Catalizador poliester", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "LIJ-072", "nombre": "Lija garlopa 16\" all grit", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "LIJ-073", "nombre": "Lija cubitron 5\"", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "LIJ-074", "nombre": "Lija cubitron 6\"", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "LIJ-075", "nombre": "Lija fandelli 5\"", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "LIJ-076", "nombre": "Lija fandelli 6\"", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "LIJ-077", "nombre": "Lija hoja 80 - 380", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "LIJ-078", "nombre": "Lija hoja 400-800", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "LIJ-079", "nombre": "Lija hoja 1000-3000", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "LIJ-080", "nombre": "Lija media hoja 3500", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "PUL-081", "nombre": "Pulimeto Norton", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "PUL-082", "nombre": "Pulimento 3m 1", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "PUL-083", "nombre": "Pulimento 3m 2", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "PUL-084", "nombre": "Pulimento 3m 3", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "PUL-085", "nombre": "Pulimento menzerna 3in1", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "BOR-086", "nombre": "Borla hule espuma 6\"", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "BOR-087", "nombre": "Borla Huro 6\"", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "BOR-088", "nombre": "Borla lana 7\"", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "BOR-089", "nombre": "Borla espuma 7\"", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "BIS-090", "nombre": "Bisagra para caida lenta de piano de cola yamaha", "categoria": "Partes Yamaha", "marca": "Yamaha", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "Yamaha Mexico", "notas": ""}, {"clave": "CAS-091", "nombre": "CASTER(S) GB1, GC1, GC2 PF", "categoria": "Partes Yamaha", "marca": "Yamaha", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "Yamaha Mexico", "notas": ""}, {"clave": "CAS-092", "nombre": "Casters Yamaha GB1", "categoria": "Partes Yamaha", "marca": "Yamaha", "modelo": "GB1", "precioCompra": 0, "precio": 7128, "stock": 0, "stockMinimo": 0, "proveedor": "Yamaha Mexico", "notas": ""}, {"clave": "CEN-093", "nombre": "CENTER PIN ASSY., 0.25 (GH1B, GH2)", "categoria": "Partes Yamaha", "marca": "Yamaha", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "Yamaha Mexico", "notas": ""}, {"clave": "CLA-094", "nombre": "Clavijas Yamaha de 60mm", "categoria": "Partes Yamaha", "marca": "Yamaha", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "Yamaha Mexico", "notas": ""}, {"clave": "CLO-095", "nombre": "CLOTH, BUSHING 1.0 T", "categoria": "Partes Yamaha", "marca": "Yamaha", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "Yamaha Mexico", "notas": ""}, {"clave": "CUB-096", "nombre": "Cubre teclado yamaha", "categoria": "Partes Yamaha", "marca": "Yamaha", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "Yamaha Mexico", "notas": ""}, {"clave": "FIE-097", "nombre": "Fieltro apagador yamaha U1/U3", "categoria": "Partes Yamaha", "marca": "Yamaha", "modelo": "U1/U3", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "Yamaha Mexico", "notas": ""}, {"clave": "LEG-098", "nombre": "LEG SOCKET GH1B GH2", "categoria": "Partes Yamaha", "marca": "Yamaha", "modelo": "GH1B GH2", "precioCompra": 0, "precio": 2075, "stock": 0, "stockMinimo": 0, "proveedor": "Yamaha Mexico", "notas": ""}, {"clave": "MAR-099", "nombre": "Martinetes para yamaha", "categoria": "Partes Yamaha", "marca": "Yamaha", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "Yamaha Mexico", "notas": ""}, {"clave": "PLA-100", "nombre": "Placa con logo yamaha", "categoria": "Partes Yamaha", "marca": "Yamaha", "modelo": "", "precioCompra": 0, "precio": 500, "stock": 0, "stockMinimo": 0, "proveedor": "Yamaha Mexico", "notas": ""}, {"clave": "TOP-101", "nombre": "TOP BOARD SECTIONAL HINGE L=1418", "categoria": "Partes Yamaha", "marca": "Yamaha", "modelo": "", "precioCompra": 0, "precio": 2028, "stock": 0, "stockMinimo": 0, "proveedor": "Yamaha Mexico", "notas": ""}, {"clave": "TRU-102", "nombre": "TRUSS HEAD WOOD SCREW 3.0X12 6PCS. BRASS", "categoria": "Partes Yamaha", "marca": "Yamaha", "modelo": "", "precioCompra": 624.66, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "Yamaha Mexico", "notas": ""}, {"clave": "BIS-103", "nombre": "Bisagra superior de tapa de piano de cola de 1.50 mts", "categoria": "Refacciones", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "CER-104", "nombre": "Cerradura para piano de bronce con llave", "categoria": "Refacciones", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "CLA-105", "nombre": "Clavijas de afinacion alemanas diamantadas", "categoria": "Refacciones", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "CLA-106", "nombre": "Clavijas Diamond", "categoria": "Refacciones", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "EJE-107", "nombre": "Ejes de bronce", "categoria": "Refacciones", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "HIL-108", "nombre": "Hilo de seda para martinetes", "categoria": "Refacciones", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "JUE-109", "nombre": "Juego de martinetes Abel", "categoria": "Refacciones", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "JUE-110", "nombre": "Juego de martinetes Genericos", "categoria": "Refacciones", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "JUE-111", "nombre": "Juego de martinetes Imadawa", "categoria": "Refacciones", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "JUE-112", "nombre": "Juego de martinetes Renner", "categoria": "Refacciones", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "LLA-113", "nombre": "Llave para chapa de piano", "categoria": "Refacciones", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "PEG-114", "nombre": "Pegamento", "categoria": "Refacciones", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "PER-115", "nombre": "Perno de bronce bisagra de tapa de piano", "categoria": "Refacciones", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 50, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "RES-116", "nombre": "Resortes de apagador inferior", "categoria": "Refacciones", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "RES-117", "nombre": "Resortes de apagador superior", "categoria": "Refacciones", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "RES-118", "nombre": "Resortes de martinetes", "categoria": "Refacciones", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "ROD-119", "nombre": "Rodajas sencillas de latón para piano", "categoria": "Refacciones", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "TIR-120", "nombre": "Tira de fieltro grueso", "categoria": "Refacciones", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "TOR-121", "nombre": "Tornillos para bisagras", "categoria": "Refacciones", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "TIR-122", "nombre": "Tiras de contacto Yamaha", "categoria": "Refacciones electrónicos", "marca": "Yamaha", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "Yamaha Mexico", "notas": ""}, {"clave": "FIE-123", "nombre": "Fieltro amortiguador superior de teclas yamaha", "categoria": "Refacciones electrónicos", "marca": "Yamaha", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "Yamaha Mexico", "notas": ""}];
+
+let _prodCatFiltro = '';
 // ══ SCREEN: PRODUCTOS ══
+function filtrarCat(cat){
+  _prodCatFiltro = _prodCatFiltro===cat ? '' : cat;
+  renderProductos();
+}
 function renderProductos(){
+  const cats = [...new Set(state.productos.map(p=>p.categoria||'Sin categoría'))].sort();
+  const lista = _prodCatFiltro ? state.productos.filter(p=>(p.categoria||'Sin categoría')===_prodCatFiltro) : state.productos;
   document.getElementById('screen-productos').innerHTML=`
-  <div class="page-header"><div class="page-title">Productos</div><div class="page-sub">${state.productos.length} artículos</div></div>
-  <div style="padding:14px">
-  ${state.productos.map(p=>`<div class="card card-sm" style="margin:0 0 10px">
-    <div style="display:flex;align-items:center;justify-content:space-between">
-      <div style="flex:1"><div style="font-weight:700;font-size:15px">${p.nombre}</div>
-        <div style="font-size:12px;color:var(--text2)">${p.proveedor}</div>
-        <span class="tag ${p.stock>5?'tag-green':p.stock>0?'tag-yellow':'tag-red'}" style="margin-top:4px">Stock: ${p.stock}</span></div>
-      <div style="text-align:right;flex-shrink:0;margin-left:8px">
-        <div style="font-weight:700;font-size:16px;color:var(--primary)">${fmtMoney(p.precio)}</div>
-        <div style="display:flex;gap:5px;margin-top:6px">
-          <button class="btn btn-ghost btn-xs" onclick="showModalEditarProducto(${p.id})">Editar</button>
-          <button class="btn btn-danger btn-xs" onclick="eliminarProducto(${p.id})">Borrar</button>
+  <div class="page-header"><div class="page-title">Inventario</div><div class="page-sub">${lista.length} de ${state.productos.length} artículos</div></div>
+  <div style="padding:0 14px 6px;display:flex;gap:6px;flex-wrap:wrap">
+    ${cats.map(c=>`<button onclick="filtrarCat('${c}')" style="padding:4px 10px;border-radius:20px;border:1px solid var(--border);background:${_prodCatFiltro===c?'var(--primary)':'var(--bg2)'};color:${_prodCatFiltro===c?'#fff':'var(--text1)'};font-size:12px;cursor:pointer;white-space:nowrap">${c}</button>`).join('')}
+  </div>
+  <div style="padding:0 14px 14px">
+  ${lista.map(p=>{
+    const stockAlert = p.stockMinimo>0 && p.stock<=p.stockMinimo;
+    const stockTag = p.stock>0 ? `<span class="tag tag-green">Stock: ${p.stock}</span>` : '';
+    const alertTag = stockAlert ? `<span class="tag tag-red" style="margin-left:4px">⚠ Bajo</span>` : '';
+    const precio = p.precio>0 ? `<div style="font-weight:700;font-size:14px;color:var(--primary)">${fmtMoney(p.precio)}</div>` : '';
+    const sub = [p.clave,p.categoria,p.marca].filter(Boolean).join(' · ');
+    return `<div class="card card-sm" style="margin:0 0 8px">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:700;font-size:14px;line-height:1.3">${p.nombre}</div>
+          <div style="font-size:11px;color:var(--text2);margin-top:2px">${sub}</div>
+          <div style="margin-top:4px">${stockTag}${alertTag}</div>
+        </div>
+        <div style="text-align:right;flex-shrink:0">
+          ${precio}
+          <div style="display:flex;gap:4px;margin-top:6px">
+            <button class="btn btn-ghost btn-xs" onclick="showModalEditarProducto(${p.id})">Editar</button>
+            <button class="btn btn-danger btn-xs" onclick="eliminarProducto(${p.id})">Borrar</button>
+          </div>
         </div>
       </div>
-    </div>
-  </div>`).join('')}
-  </div>`;}
-function showModalNuevoProducto(){openModal(`<div class="modal-title">Nuevo producto</div>
-  <div class="input-group"><label class="input-label">Nombre *</label><input class="input" id="np2-n"></div>
-  <div class="input-group"><label class="input-label">Precio</label><input type="number" class="input" id="np2-p"></div>
-  <div class="input-group"><label class="input-label">Stock</label><input type="number" class="input" id="np2-s"></div>
-  <div class="input-group"><label class="input-label">Proveedor</label><input class="input" id="np2-pv"></div>
-  <button class="btn btn-primary btn-full" onclick="crearProducto()">Guardar</button>`);}
-function showModalEditarProducto(id){const p=state.productos.find(x=>x.id===id);
-  openModal(`<div class="modal-title">Editar producto</div>
-  <div class="input-group"><label class="input-label">Nombre</label><input class="input" id="ep2-n" value="${p.nombre}"></div>
-  <div class="input-group"><label class="input-label">Precio</label><input type="number" class="input" id="ep2-p" value="${p.precio}"></div>
-  <div class="input-group"><label class="input-label">Stock</label><input type="number" class="input" id="ep2-s" value="${p.stock}"></div>
-  <div class="input-group"><label class="input-label">Proveedor</label><input class="input" id="ep2-pv" value="${p.proveedor}"></div>
-  <button class="btn btn-primary btn-full" onclick="guardarProducto(${id})">Guardar</button>`);}
-function crearProducto(){const n=document.getElementById('np2-n').value.trim();if(!n){showToast('Nombre obligatorio');return;}
-  state.productos.push({id:nextId(),nombre:n,precio:Number(document.getElementById('np2-p').value)||0,stock:Number(document.getElementById('np2-s').value)||0,proveedor:document.getElementById('np2-pv').value.trim()});
-  saveState();closeModal();showToast('Creado ✓');renderProductos();}
-function guardarProducto(id){const p=state.productos.find(x=>x.id===id);
-  p.nombre=document.getElementById('ep2-n').value.trim();p.precio=Number(document.getElementById('ep2-p').value)||0;
-  p.stock=Number(document.getElementById('ep2-s').value)||0;p.proveedor=document.getElementById('ep2-pv').value.trim();
-  saveState();closeModal();showToast('Actualizado ✓');renderProductos();}
+    </div>`;
+  }).join('')}
+  </div>`;
+}
+function _prodModalFields(v, titulo, saveFn){
+  const cats=["Accesorios", "Cuerdas", "Damp Chaser", "Fieltros y Gamuzas", "Materiales de pintura", "Partes Yamaha", "Refacciones", "Refacciones electrónicos"];
+  const opts=cats.map(c=>`<option value="${c}" ${(v.categoria||'')==c?'selected':''}>${c}</option>`).join('');
+  openModal(`<div class="modal-title">${titulo}</div>
+  <div class="input-group"><label class="input-label">Clave</label><input class="input" id="ep-clave" value="${v.clave||''}"></div>
+  <div class="input-group"><label class="input-label">Nombre *</label><input class="input" id="ep-nombre" value="${v.nombre||''}"></div>
+  <div class="input-group"><label class="input-label">Categoría</label>
+    <select class="input" id="ep-cat"><option value="">- Sin categoría -</option>${opts}</select>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+    <div class="input-group"><label class="input-label">Marca</label><input class="input" id="ep-marca" value="${v.marca||''}"></div>
+    <div class="input-group"><label class="input-label">Modelo</label><input class="input" id="ep-modelo" value="${v.modelo||''}"></div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+    <div class="input-group"><label class="input-label">Precio compra</label><input type="number" class="input" id="ep-pcompra" value="${v.precioCompra||0}"></div>
+    <div class="input-group"><label class="input-label">Precio venta</label><input type="number" class="input" id="ep-pventa" value="${v.precio||0}"></div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+    <div class="input-group"><label class="input-label">Stock</label><input type="number" class="input" id="ep-stock" value="${v.stock||0}"></div>
+    <div class="input-group"><label class="input-label">Stock mínimo</label><input type="number" class="input" id="ep-smin" value="${v.stockMinimo||0}"></div>
+  </div>
+  <div class="input-group"><label class="input-label">Proveedor</label><input class="input" id="ep-prov" value="${v.proveedor||''}"></div>
+  <div class="input-group"><label class="input-label">Notas</label><textarea class="input" id="ep-notas" rows="2">${v.notas||''}</textarea></div>
+  <button class="btn btn-primary btn-full" onclick="${saveFn}">Guardar</button>`);
+}
+function _prodRead(){
+  return {
+    clave:document.getElementById('ep-clave').value.trim(),
+    nombre:document.getElementById('ep-nombre').value.trim(),
+    categoria:document.getElementById('ep-cat').value,
+    marca:document.getElementById('ep-marca').value.trim(),
+    modelo:document.getElementById('ep-modelo').value.trim(),
+    precioCompra:Number(document.getElementById('ep-pcompra').value)||0,
+    precio:Number(document.getElementById('ep-pventa').value)||0,
+    stock:Number(document.getElementById('ep-stock').value)||0,
+    stockMinimo:Number(document.getElementById('ep-smin').value)||0,
+    proveedor:document.getElementById('ep-prov').value.trim(),
+    notas:document.getElementById('ep-notas').value.trim()
+  };
+}
+function showModalNuevoProducto(){_prodModalFields({},'Nuevo producto','crearProducto()');}
+function showModalEditarProducto(id){const p=state.productos.find(x=>x.id===id);_prodModalFields(p,'Editar producto',`guardarProducto(${id})`);}
+function crearProducto(){const d=_prodRead();if(!d.nombre){showToast('Nombre obligatorio');return;}
+  state.productos.push({id:nextId(),...d});saveState();closeModal();showToast('Creado ✓');renderProductos();}
+function guardarProducto(id){const p=state.productos.find(x=>x.id===id);const d=_prodRead();if(!d.nombre){showToast('Nombre obligatorio');return;}
+  Object.assign(p,d);saveState();closeModal();showToast('Actualizado ✓');renderProductos();}
 function eliminarProducto(id){if(!confirm('¿Eliminar?'))return;state.productos=state.productos.filter(x=>x.id!==id);saveState();renderProductos();}
+function importarCatalogoInicial(){
+  if(state.productos.length>0){
+    if(!confirm('Ya tienes '+state.productos.length+' productos. ¿Agregar el catálogo inicial sin borrar los existentes?'))return;
+  }
+  const existentes=new Set(state.productos.map(p=>p.clave||p.nombre));
+  const nuevos=CATALOGO_INICIAL_PRODUCTOS.filter(p=>!existentes.has(p.clave)&&!existentes.has(p.nombre));
+  nuevos.forEach(p=>state.productos.push({id:nextId(),...p}));
+  saveState();showToast(nuevos.length+' productos importados ✓');renderProductos();
+}
 
 // ══ SCREEN: PRESUPUESTO ══
 function renderPresupuesto(){
@@ -2019,11 +2134,14 @@ function _openPresupuestoModal(titulo, boton, preCliId, presExistente){
   <div class="modal-sub" style="margin-top:10px">Cotizadores</div>
   <div style="display:flex;gap:8px;margin-bottom:8px">
     <button onclick="showMiniCotizadorCuerdas()" style="flex:1;padding:9px;border-radius:10px;border:1.5px solid var(--primary);background:var(--primary-light);color:var(--primary);font-weight:700;font-size:13px;cursor:pointer">🎵 Cuerda entorchada</button>
-    <button onclick="showToast('Cotizador de fundas próximamente')" style="flex:1;padding:9px;border-radius:10px;border:1.5px dashed var(--border);background:var(--bg);color:var(--text3);font-weight:600;font-size:13px;cursor:pointer">🎸 Funda (próximo)</button>
+    <button onclick="showMiniCotizadorFundas()" style="flex:1;padding:9px;border-radius:10px;border:1.5px solid var(--success);background:var(--success-light);color:var(--success);font-weight:700;font-size:13px;cursor:pointer">🎸 Funda de piano</button>
+  </div>
+  <div style="margin-bottom:8px">
+    <button onclick="showMiniCotizadorMudanza()" style="width:100%;padding:9px;border-radius:10px;border:1.5px solid #e65100;background:#fff3e0;color:#e65100;font-weight:700;font-size:13px;cursor:pointer">🚛 Cotizar mudanza / traslado</button>
   </div>
 
-  <div id="pb-items" style="margin-top:4px"></div>
-  <div id="pb-total" style="font-weight:700;font-size:16px;text-align:right;padding:6px 0;color:var(--success)"></div>
+  <div id="pb-items" style="margin-top:4px">${pbItemsHTML()}</div>
+  <div id="pb-total" style="font-weight:700;font-size:16px;text-align:right;padding:6px 0;color:var(--success)">${pbTotalHTML()}</div>
 
   <div class="foraneo-toggle" id="foraneo-toggle" onclick="toggleForaneo()">
     <div class="toggle-switch" id="foraneo-switch"></div>
@@ -2041,6 +2159,7 @@ function _openPresupuestoModal(titulo, boton, preCliId, presExistente){
     if(cId){document.getElementById('pb-c').value=cId;onPbCliChange();}
     if(presExistente?.pianoId){setTimeout(()=>{const s=document.getElementById('pb-p');if(s)s.value=presExistente.pianoId;},80);}
     renderPbItems();
+    setTimeout(renderPbItems,120); // fallback por timing
   },50);
 }
 
@@ -2064,6 +2183,80 @@ function buildProdSelector(wrapId, selId, prId){
   wrap.innerHTML=`<select class="input select" id="${selId}" onchange="const p=state.productos.find(x=>x.id===parseInt(this.value));const el=document.getElementById('${prId}');if(el&&p)el.value=p.precio">${opts}</select>`;
 }
 
+// ── Mini cotizador de mudanza dentro del presupuesto ───────
+let _mud = {flete:true,embalajeTmp:false,embalajePerm:false,tarima:false,cargadores:1,origen:'',destino:''};
+function showMiniCotizadorMudanza(){
+  // Guardar estado del presupuesto
+  _pbSavedState = {items:[...pbItems],cliId:pbCliId,pianoId:pbPianoId,foraneo:pbForaneo};
+  const precios = {flete:state.mudPrecios?.flete||1200,embalajeTmp:state.mudPrecios?.embalajeTmp||500,
+    embalajePerm:state.mudPrecios?.embalajePerm||800,tarima:state.mudPrecios?.tarima||1000,cargadorUnit:state.mudPrecios?.cargadorUnit||500};
+  function total(){
+    let t=0;
+    if(_mud.flete)t+=precios.flete;
+    if(_mud.embalajeTmp)t+=precios.embalajeTmp;
+    if(_mud.embalajePerm)t+=precios.embalajePerm;
+    if(_mud.tarima)t+=precios.tarima;
+    t+=(_mud.cargadores||0)*precios.cargadorUnit;
+    return t;
+  }
+  function chk(key,label,precio){
+    return `<div onclick="_mud['${key}']=!_mud['${key}'];showMiniCotizadorMudanza()" style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-radius:8px;border:1.5px solid ${_mud[key]?'var(--primary)':'var(--border)'};background:${_mud[key]?'var(--primary-light)':'var(--surface)'};cursor:pointer;margin-bottom:6px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <div style="width:18px;height:18px;border-radius:50%;border:2px solid ${_mud[key]?'var(--primary)':'var(--text3)'};background:${_mud[key]?'var(--primary)':'transparent'};display:flex;align-items:center;justify-content:center">
+          ${_mud[key]?'<svg width="10" height="10" viewBox="0 0 10 10"><polyline points="1.5,5 4,7.5 8.5,2.5" stroke="#fff" stroke-width="1.5" fill="none"/></svg>':''}
+        </div>
+        <span style="font-size:13px;font-weight:600">${label}</span>
+      </div>
+      <span style="font-size:13px;font-weight:700;color:var(--primary)">${fmtMoney(precio)}</span>
+    </div>`;
+  }
+  openModal(`<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+    <button onclick="_reopenPresupuestoModal()" style="background:none;border:none;font-size:18px;cursor:pointer;padding:0">←</button>
+    <div class="modal-title" style="margin:0">🚛 Mudanza / Traslado</div>
+  </div>
+  <div class="input-group"><label class="input-label">Origen</label>
+    <input class="input" id="mud-ori" placeholder="Dirección de origen" value="${_mud.origen}"
+      oninput="_mud.origen=this.value"></div>
+  <div class="input-group"><label class="input-label">Destino</label>
+    <input class="input" id="mud-dst" placeholder="Dirección de destino" value="${_mud.destino}"
+      oninput="_mud.destino=this.value"></div>
+  <div class="modal-sub" style="margin:10px 0 6px">Conceptos</div>
+  ${chk('flete','Flete / transporte',precios.flete)}
+  ${chk('embalajeTmp','Embalaje temporal',precios.embalajeTmp)}
+  ${chk('embalajePerm','Embalaje permanente',precios.embalajePerm)}
+  ${chk('tarima','Tarima',precios.tarima)}
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-radius:8px;border:1.5px solid var(--border);background:var(--surface);margin-bottom:6px">
+    <span style="font-size:13px;font-weight:600">👷 Cargadores</span>
+    <div style="display:flex;align-items:center;gap:8px">
+      <button onclick="_mud.cargadores=Math.max(0,(_mud.cargadores||0)-1);showMiniCotizadorMudanza()" style="width:28px;height:28px;border-radius:50%;border:1px solid var(--border);background:var(--bg2);font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center">−</button>
+      <span style="font-weight:700;font-size:15px;min-width:20px;text-align:center">${_mud.cargadores||0}</span>
+      <button onclick="_mud.cargadores=(_mud.cargadores||0)+1;showMiniCotizadorMudanza()" style="width:28px;height:28px;border-radius:50%;border:1px solid var(--border);background:var(--bg2);font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center">+</button>
+      <span style="font-size:12px;color:var(--text2)">× ${fmtMoney(precios.cargadorUnit)} = ${fmtMoney((_mud.cargadores||0)*precios.cargadorUnit)}</span>
+    </div>
+  </div>
+  <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-top:1px solid var(--border);margin-top:4px">
+    <span style="font-weight:700;font-size:14px">Total</span>
+    <span style="font-weight:700;font-size:18px;color:var(--primary)">${fmtMoney(total())}</span>
+  </div>
+  <button class="btn btn-primary btn-full" onclick="_agregarMudanza()" style="margin-top:4px">+ Agregar al presupuesto</button>`);
+}
+function _agregarMudanza(){
+  const precios = {flete:state.mudPrecios?.flete||1200,embalajeTmp:state.mudPrecios?.embalajeTmp||500,
+    embalajePerm:state.mudPrecios?.embalajePerm||800,tarima:state.mudPrecios?.tarima||1000,cargadorUnit:state.mudPrecios?.cargadorUnit||500};
+  let t=0,parts=[];
+  if(_mud.flete){t+=precios.flete;parts.push('Flete');}
+  if(_mud.embalajeTmp){t+=precios.embalajeTmp;parts.push('Embalaje tmp.');}
+  if(_mud.embalajePerm){t+=precios.embalajePerm;parts.push('Embalaje perm.');}
+  if(_mud.tarima){t+=precios.tarima;parts.push('Tarima');}
+  if(_mud.cargadores>0){t+=_mud.cargadores*precios.cargadorUnit;parts.push(_mud.cargadores+' cargador'+(_mud.cargadores>1?'es':''));}
+  const ori=_mud.origen.trim(),dst=_mud.destino.trim();
+  const ruta=ori&&dst?` (${ori} → ${dst})`:ori?` (${ori})`:dst?` (→ ${dst})`:'';
+  const nombre=`🚛 Traslado${ruta} — ${parts.join(', ')}`;
+  pbItems.push({svcId:null,nombre,precio:t,_mudanza:true});
+  _mud={flete:true,embalajeTmp:false,embalajePerm:false,tarima:false,cargadores:1,origen:'',destino:''};
+  _reopenPresupuestoModal();
+}
+
 // ── Mini cotizador de cuerdas dentro del presupuesto ────────
 function _savePbDomState(){
   // Guardar selección del DOM antes de navegar al mini cotizador
@@ -2081,6 +2274,9 @@ function _reopenPresupuestoModal(){
   _openPresupuestoModal(titulo,boton,pbCliId,_pbEditId?{id:_pbEditId,clienteId:pbCliId,pianoId:pbPianoId,items:pbItems}:null);
 }
 
+// Lista interna del mini cotizador de cuerdas (antes de pasar a presupuesto)
+let _miniCueItems = [];
+
 function showMiniCotizadorCuerdas(){
   _savePbDomState();
   const tipo=_cue.tipo||'vertical';
@@ -2091,47 +2287,108 @@ function showMiniCotizadorCuerdas(){
   const tipoCuerda=detectTipoCuerda(_cue.nota,cat);
   const anchor=getCueAnchor(tipo,cat.id);
   const precioUnit=Math.round(anchor*getCueFactor(tipoCuerda));
+  const subtotalMini=_miniCueItems.reduce((s,i)=>s+i.precio*i.cant,0);
+
+  // Lista interna de cuerdas acumuladas
+  const listaHTML=_miniCueItems.length===0?'':`
+    <div style="background:var(--bg);border-radius:8px;border:1px solid var(--border);margin-bottom:10px;overflow:hidden">
+      <div style="padding:7px 12px;font-size:11px;font-weight:700;color:var(--text2);background:var(--surface);border-bottom:1px solid var(--border);display:flex;justify-content:space-between">
+        <span>CUERDAS EN LISTA (${_miniCueItems.length})</span>
+        <button onclick="_miniCueItems=[];showMiniCotizadorCuerdas()" style="font-size:11px;color:var(--danger);background:none;border:none;cursor:pointer">Limpiar</button>
+      </div>
+      ${_miniCueItems.map((it,i)=>`
+        <div style="display:flex;align-items:center;gap:8px;padding:7px 12px;border-bottom:1px solid var(--border);font-size:12px">
+          <div style="flex:1"><div style="font-weight:600">${it.cant}× ${notaNombre(it.nota)}</div>
+          <div style="color:var(--text2)">${it.tipoCuerdaLabel}</div></div>
+          <div style="font-weight:700;color:var(--primary)">${fmtMoney(it.precio*it.cant)}</div>
+          <button onclick="_miniCueItems.splice(${i},1);showMiniCotizadorCuerdas()" style="color:var(--danger);background:none;border:none;font-size:14px;cursor:pointer">✕</button>
+        </div>`).join('')}
+      <div style="padding:7px 12px;font-size:13px;font-weight:700;display:flex;justify-content:space-between;background:var(--surface)">
+        <span>Subtotal</span><span style="color:var(--primary)">${fmtMoney(subtotalMini)}</span>
+      </div>
+    </div>`;
 
   openModal(`<div class="modal-title" style="display:flex;align-items:center;gap:10px">
-    <button onclick="_reopenPresupuestoModal()" style="background:none;border:none;color:var(--primary);font-size:20px;cursor:pointer;padding:0 4px 0 0">←</button>
-    🎵 Agregar cuerda entorchada</div>
-  <div style="display:flex;gap:8px;margin-bottom:12px">
+    <button onclick="_miniCueItems=[];_reopenPresupuestoModal()" style="background:none;border:none;color:var(--primary);font-size:20px;cursor:pointer;padding:0 4px 0 0">←</button>
+    🎵 Cuerdas entorchadas</div>
+
+  <div style="display:flex;gap:8px;margin-bottom:10px">
     <button onclick="_cue.tipo='vertical';_cue.catId='esp';showMiniCotizadorCuerdas()"
       style="flex:1;padding:8px;border-radius:8px;border:2px solid ${tipo==='vertical'?'var(--primary)':'var(--border)'};background:${tipo==='vertical'?'var(--primary-light)':'var(--surface)'};font-weight:700;font-size:13px;cursor:pointer;color:${tipo==='vertical'?'var(--primary)':'var(--text2)'}">Vertical</button>
     <button onclick="_cue.tipo='cola';_cue.catId='baby';showMiniCotizadorCuerdas()"
       style="flex:1;padding:8px;border-radius:8px;border:2px solid ${tipo==='cola'?'var(--primary)':'var(--border)'};background:${tipo==='cola'?'var(--primary-light)':'var(--surface)'};font-weight:700;font-size:13px;cursor:pointer;color:${tipo==='cola'?'var(--primary)':'var(--text2)'}">Cola</button>
   </div>
+
   <div class="input-group"><label class="input-label">Tamaño</label>
     <select class="input select" onchange="_cue.catId=this.value;_cue.nota=1;showMiniCotizadorCuerdas()">
       ${cats.map(ct=>`<option value="${ct.id}" ${ct.id===cat.id?'selected':''}>${ct.label}</option>`).join('')}
     </select></div>
+
   <div class="input-group"><label class="input-label">Nota musical</label>
-    <select class="input select" id="mini-nota" onchange="_cue.nota=parseInt(this.value);showMiniCotizadorCuerdas()">${notaOpts}</select></div>
-  <div style="padding:8px 12px;border-radius:8px;background:var(--primary-light);margin-bottom:12px;font-size:13px;font-weight:700;color:var(--primary)">
+    <select class="input select" onchange="_cue.nota=parseInt(this.value);showMiniCotizadorCuerdas()">${notaOpts}</select></div>
+
+  <div style="padding:8px 12px;border-radius:8px;background:var(--primary-light);font-size:13px;font-weight:700;color:var(--primary);margin-bottom:10px">
     ${tipoCuerdaLabel(tipoCuerda)} — ${fmtMoney(precioUnit)} c/u
   </div>
-  <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
-    <label class="input-label" style="margin:0">Cantidad:</label>
+
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+    <span style="font-size:12px;font-weight:700;color:var(--text2)">CANTIDAD</span>
     <button onclick="_cue.cantidad=Math.max(1,_cue.cantidad-1);showMiniCotizadorCuerdas()" style="width:30px;height:30px;border-radius:6px;border:1px solid var(--border);background:var(--bg);font-size:16px;cursor:pointer">−</button>
-    <span style="font-size:18px;font-weight:800;min-width:24px;text-align:center">${_cue.cantidad}</span>
+    <span style="font-size:18px;font-weight:800;min-width:24px;text-align:center">${_cue.cantidad||1}</span>
     <button onclick="_cue.cantidad=(_cue.cantidad||1)+1;showMiniCotizadorCuerdas()" style="width:30px;height:30px;border-radius:6px;border:1px solid var(--border);background:var(--bg);font-size:16px;cursor:pointer">+</button>
     <span style="font-size:15px;font-weight:700;color:var(--primary);margin-left:auto">${fmtMoney(precioUnit*(_cue.cantidad||1))}</span>
   </div>
-  <button class="btn btn-primary btn-full" onclick="agregarCuerdaAPresupuesto()">+ Agregar al presupuesto</button>`);
+
+  <button onclick="agregarACuerdaLista()" style="width:100%;padding:10px;border-radius:10px;border:2px solid var(--primary);background:var(--primary-light);color:var(--primary);font-weight:700;font-size:14px;cursor:pointer;margin-bottom:12px">
+    + Añadir a la lista
+  </button>
+
+  ${listaHTML}
+
+  <button class="btn btn-primary btn-full" ${_miniCueItems.length===0?'disabled style="opacity:.45"':''} onclick="pasarCuerdasAPresupuesto()">
+    ✓ Agregar ${_miniCueItems.length>0?_miniCueItems.length+' cuerda(s) ':' '}al presupuesto
+  </button>`);
 }
 
-function agregarCuerdaAPresupuesto(){
+function agregarACuerdaLista(){
   const tipo=_cue.tipo;
   const cat=CUE_CATS[tipo].find(c=>c.id===_cue.catId)||CUE_CATS[tipo][0];
   const tipoCuerda=detectTipoCuerda(_cue.nota,cat);
   const precioUnit=Math.round(getCueAnchor(tipo,cat.id)*getCueFactor(tipoCuerda));
-  const nombre=`Cuerda ${tipoCuerdaLabel(tipoCuerda)} ${notaNombre(_cue.nota)} (${cat.label})`;
-  for(let i=0;i<(_cue.cantidad||1);i++){
-    pbItems.push({nombre, precio:precioUnit, tipo:'cuerda'});
+  // Si misma nota ya existe en lista, sumar cantidad
+  const existing=_miniCueItems.find(i=>i.nota===_cue.nota&&i.catId===_cue.catId&&i.tipo===tipo);
+  if(existing){
+    existing.cant+=(_cue.cantidad||1);
+  } else {
+    _miniCueItems.push({
+      nota:_cue.nota, catId:_cue.catId, tipo,
+      cant:_cue.cantidad||1,
+      precio:precioUnit,
+      tipoCuerdaLabel:tipoCuerdaLabel(tipoCuerda),
+      nombre:`Cuerda ${tipoCuerdaLabel(tipoCuerda)} ${notaNombre(_cue.nota)} (${cat.label})`
+    });
   }
   _cue.cantidad=1;
-  showToast('✅ Cuerda agregada al presupuesto');
+  showMiniCotizadorCuerdas();
+}
+
+function pasarCuerdasAPresupuesto(){
+  if(!_miniCueItems.length){showToast('Agrega cuerdas a la lista primero');return;}
+  _miniCueItems.forEach(it=>{
+    for(let i=0;i<it.cant;i++){
+      pbItems.push({nombre:it.nombre, precio:it.precio, tipo:'cuerda'});
+    }
+  });
+  const n=_miniCueItems.reduce((s,i)=>s+i.cant,0);
+  _miniCueItems=[];
+  _cue.cantidad=1;
+  showToast(`✅ ${n} cuerda(s) agregada(s) al presupuesto`);
   _reopenPresupuestoModal();
+}
+
+function agregarCuerdaAPresupuesto(){
+  // Alias legacy — llama al nuevo flujo
+  pasarCuerdasAPresupuesto();
 }
 function onPbCliChange(){const cId=document.getElementById('pb-c').value;const sel=document.getElementById('pb-p');if(sel)sel.innerHTML=cId?buildPianoOpts(cId):'<option value="">Selecciona cliente</option>';}
 function updPrecioPresupuesto(){svcSelChange('pb-s','pb-pr');}
@@ -2150,16 +2407,23 @@ function agregarItemPb(tipo){
   }
   renderPbItems();
 }
-function renderPbItems(){
-  const total=pbItems.reduce((s,i)=>s+Number(i.precio),0);
-  const cont=document.getElementById('pb-items');const totEl=document.getElementById('pb-total');if(!cont)return;
-  cont.innerHTML=pbItems.map((item,i)=>`<div class="budget-row">
+function pbItemsHTML(){
+  return pbItems.map((item,i)=>`<div class="budget-row">
     <div style="flex:1;font-size:14px">${item.nombre}</div>
     <input type="number" value="${item.precio}" style="width:90px;padding:6px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:13px;text-align:right;background:var(--surface);color:var(--text)"
       onchange="pbItems[${i}].precio=Number(this.value);renderPbItems()">
     <button class="btn btn-danger btn-xs" onclick="pbItems.splice(${i},1);renderPbItems()">✕</button>
   </div>`).join('');
-  if(totEl)totEl.textContent=pbItems.length?'Total: '+fmtMoney(total):'';
+}
+function pbTotalHTML(){
+  const total=pbItems.reduce((s,i)=>s+Number(i.precio),0);
+  return pbItems.length?'Total: '+fmtMoney(total):'';
+}
+function renderPbItems(){
+  const cont=document.getElementById('pb-items');
+  const totEl=document.getElementById('pb-total');
+  if(cont) cont.innerHTML=pbItemsHTML();
+  if(totEl) totEl.textContent=pbTotalHTML();
 }
 function guardarPresupuesto(editId){
   const clienteId=parseInt(document.getElementById('pb-c').value);
@@ -2415,6 +2679,32 @@ function renderConfig(){
     <input type="number" class="input" style="width:90px;text-align:right" value="${state.cueDescTecnico||15}"
       onchange="state.cueDescTecnico=Number(this.value);saveState()"></div>
 
+  <!-- v2.9.6 — configuración cotizador fundas -->
+  <div class="sec">Cotizador de Fundas</div>
+  <div style="padding:4px 16px 6px;font-size:12px;color:var(--text2)">Precios por bracket (con IVA)</div>
+  ${getFundaPrecios().map(b=>`
+    <div style="padding:6px 16px;border-bottom:1px solid var(--border)">
+      <div style="font-size:12px;font-weight:700;color:var(--text2);margin-bottom:4px">${b.label}</div>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px">
+        <span style="font-size:12px;min-width:70px">🚛 Mudanza</span>
+        <input type="number" class="input" style="flex:1;text-align:right" value="${b.mudanza}"
+          onchange="state.fundaPrecios=state.fundaPrecios||{};state.fundaPrecios['${b.id}_mud']=Number(this.value);saveState()">
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px">
+        <span style="font-size:12px;min-width:70px">🛋️ Tapicería</span>
+        <input type="number" class="input" style="flex:1;text-align:right" value="${b.tapiceria}"
+          onchange="state.fundaPrecios=state.fundaPrecios||{};state.fundaPrecios['${b.id}_tap']=Number(this.value);saveState()">
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <span style="font-size:12px;min-width:70px">🔗 Correas (${b.correas}pz)</span>
+        <input type="number" class="input" style="flex:1;text-align:right" value="${b.precioCorreas}"
+          onchange="state.fundaPrecios=state.fundaPrecios||{};state.fundaPrecios['${b.id}_cor']=Number(this.value);saveState()">
+      </div>
+    </div>`).join('')}
+  <div class="settings-row"><div class="sr-title">👜 Bolsas (3 patas + lira)</div>
+    <input type="number" class="input" style="width:90px;text-align:right" value="${getFundaBolsas()}"
+      onchange="state.fundaBolsas=Number(this.value);saveState()"></div>
+
   <!-- v2.8.1 — sincronización real vía Apps Script -->
   <div class="sec">Sincronización en la nube</div>
   <div class="settings-row">
@@ -2428,6 +2718,8 @@ function renderConfig(){
 
   <div class="sec">Backup</div>
   <div class="settings-row"><div><div class="sr-title">Exportar JSON</div><div class="sr-sub">Descarga todos tus datos</div></div><button class="btn btn-primary btn-xs" onclick="exportarJSON()">Exportar</button></div>
+  <div class="settings-row"><div><div class="sr-title">Catálogo inicial de productos</div><div class="sr-sub">Carga los 123 productos base (no borra los existentes)</div></div>
+    <button class="btn btn-ghost btn-xs" onclick="importarCatalogoInicial()">Importar</button></div>
   <div class="settings-row"><div><div class="sr-title">Importar JSON</div><div class="sr-sub">Restaura desde archivo</div></div>
     <label class="btn btn-ghost btn-xs" style="cursor:pointer">Importar<input type="file" accept=".json" style="display:none" onchange="importarJSON(this)"></label></div>
 
@@ -2440,7 +2732,7 @@ function renderConfig(){
 
   <div class="credits-block">
     <div class="credits-logo">🎹</div>
-    <div class="credits-app">PianoTune Pro v2.9.5</div>
+    <div class="credits-app">PianoTune Pro v2.9.8</div>
     <div class="credits-dev">Desarrollado por Sergio L. Ruiz Jones</div>
     <div class="credits-co">Pianos and Pianos — Mazatlán, Sin.</div>
   </div>`;
@@ -2518,7 +2810,7 @@ navigate('inicio');
 // ══ PWA: SERVICE WORKER ══
 if('serviceWorker' in navigator){
   const swCode=`
-const CACHE='pianotune-v2.9.5'; // v2.9.5
+const CACHE='pianotune-v2.9.8'; // v2.9.6
 const ASSETS=['/'];
 self.addEventListener('install',e=>{
   e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)).then(()=>self.skipWaiting()));
@@ -3939,6 +4231,35 @@ function tpGenerarOS(citaId){
 }
 
 // ── Generar texto Presupuesto ──────────────────────────────
+function tpGenerarFundaCotizacion(items, cliente){
+  // Formato térmico para cotización de funda
+  const fondaItems = items.filter(i=>i.tipo==='funda');
+  if(!fondaItems.length) return '';
+  const tec = state.tecnico||{};
+  const total = fondaItems.reduce((s,i)=>s+(i.precio||0),0);
+
+  let t='';
+  t+=tpCenter('PIANOS & PIANOS');
+  t+=tpCenter(tec.nombre||'Sergio Ruiz');
+  t+=tpSep('=');
+  t+=tpCenter('COTIZACION - FUNDAS DE PIANO');
+  t+=tpRight('Fecha:',tpFecha(new Date().toISOString().split('T')[0]));
+  if(cliente) t+=tpLine('Cliente: '+(cliente.nombre||'').substring(0,22));
+  t+=tpSep();
+  fondaItems.forEach(item=>{
+    const nom=(item.nombre||'').substring(0,22);
+    const pr=tpFmtMoney(item.precio||0);
+    t+=nom.padEnd(TP_W-pr.length)+pr+'\n';
+  });
+  t+=tpSep('=');
+  t+=tpRight('TOTAL c/IVA:',tpFmtMoney(total));
+  t+=tpSep('=');
+  t+=tpCenter('pianosandpianos.com');
+  t+=tpCenter('272 118 8088');
+  t+='\n\n\n';
+  return t;
+}
+
 function tpGenerarPresupuesto(presId){
   const pres = state.presupuestos?.find(p=>p.id===presId);
   if(!pres)return'';
@@ -4046,6 +4367,189 @@ function tpVistaPrevia(texto, titulo, printFn){
     <div style="display:flex;gap:8px;margin-top:14px">
       <button onclick="(${printFn})()" class="btn btn-primary btn-full">📠 Imprimir (RawBT)</button>
     </div>`);
+}
+
+
+// ══════════════════════════════════════════════════════════
+// COTIZADOR DE FUNDAS — v2.9.6
+// ══════════════════════════════════════════════════════════
+
+// ── Tabla de precios base (editables en Config) ────────────
+const FUNDAS_BRACKETS = [
+  {id:'f1', label:'149–165 cm', min:149, max:165,
+    mudanza:6900, tapiceria:5000, correas:3, precioCorreas:818},
+  {id:'f2', label:'166–180 cm', min:166, max:180,
+    mudanza:7500, tapiceria:5400, correas:3, precioCorreas:818},
+  {id:'f3', label:'181–195 cm', min:181, max:195,
+    mudanza:8200, tapiceria:5900, correas:3, precioCorreas:818},
+  {id:'f4', label:'196–220 cm', min:196, max:220,
+    mudanza:9000, tapiceria:6500, correas:4, precioCorreas:1090},
+  {id:'f5', label:'221–240 cm', min:221, max:240,
+    mudanza:9800, tapiceria:7100, correas:4, precioCorreas:1090},
+  {id:'f6', label:'241–260 cm', min:241, max:260,
+    mudanza:10800, tapiceria:7800, correas:4, precioCorreas:1090},
+  {id:'f7', label:'261 cm +',   min:261, max:999,
+    mudanza:12000, tapiceria:8700, correas:5, precioCorreas:1363},
+];
+const FUNDAS_BOLSAS_BASE = 4000;
+
+function getFundaPrecios(){
+  const ov = state.fundaPrecios || {};
+  return FUNDAS_BRACKETS.map(b=>({
+    ...b,
+    mudanza:    ov[b.id+'_mud'] ?? b.mudanza,
+    tapiceria:  ov[b.id+'_tap'] ?? b.tapiceria,
+    precioCorreas: ov[b.id+'_cor'] ?? b.precioCorreas,
+  }));
+}
+function getFundaBolsas(){
+  return state.fundaBolsas ?? FUNDAS_BOLSAS_BASE;
+}
+function getBracket(largo){
+  return getFundaPrecios().find(b=>largo>=b.min&&largo<=b.max)||null;
+}
+
+// ── Estado del cotizador fundas ───────────────────────────
+let _fnd = {largo:'', tipo:'mudanza', correas:false, bolsas:false};
+
+// ── Render cotizador fundas (mini-modal dentro presupuesto) ─
+function showMiniCotizadorFundas(){
+  _savePbDomState();
+  const bracket = _fnd.largo ? getBracket(parseInt(_fnd.largo)) : null;
+
+  // Calcular precio
+  let precioFunda=0, precioCorreas=0, precioBolsas=0;
+  if(bracket){
+    precioFunda = _fnd.tipo==='mudanza' ? bracket.mudanza : bracket.tapiceria;
+    if(_fnd.correas && _fnd.tipo==='mudanza') precioCorreas = bracket.precioCorreas;
+    if(_fnd.bolsas) precioBolsas = getFundaBolsas();
+  }
+  const total = precioFunda + precioCorreas + precioBolsas;
+
+  const tipoLabel = _fnd.tipo==='mudanza' ? 'Mudanza (Moving Blanket)' : 'Tapicería (Upholstery)';
+  const bracketLabel = bracket ? bracket.label : '—';
+  const correaLabel  = bracket ? `${bracket.correas} correas (+${fmtMoney(bracket.precioCorreas)})` : '—';
+
+  openModal(`<div class="modal-title" style="display:flex;align-items:center;gap:10px">
+    <button onclick="_reopenPresupuestoModal()" style="background:none;border:none;color:var(--primary);font-size:20px;cursor:pointer;padding:0 4px 0 0">←</button>
+    🎸 Cotizar funda de piano</div>
+
+  <div class="input-group"><label class="input-label">Largo del piano (cm)</label>
+    <input type="number" class="input" id="fnd-largo" value="${_fnd.largo}"
+      placeholder="Ej: 188"
+      onchange="_fnd.largo=this.value;showMiniCotizadorFundas()">
+    ${bracket
+      ? `<div style="margin-top:6px;font-size:12px;font-weight:700;color:var(--success)">✓ Bracket: ${bracketLabel}</div>`
+      : (_fnd.largo
+          ? `<div style="margin-top:6px;font-size:12px;color:var(--danger)">⚠️ Largo fuera de rango (149–999 cm)</div>`
+          : '')}
+  </div>
+
+  <div class="input-group"><label class="input-label">Tipo de funda</label>
+    <div style="display:flex;gap:8px">
+      <button onclick="_fnd.tipo='mudanza';showMiniCotizadorFundas()"
+        style="flex:1;padding:10px;border-radius:10px;border:2px solid ${_fnd.tipo==='mudanza'?'var(--primary)':'var(--border)'};background:${_fnd.tipo==='mudanza'?'var(--primary-light)':'var(--surface)'};font-weight:700;font-size:13px;cursor:pointer;color:${_fnd.tipo==='mudanza'?'var(--primary)':'var(--text2)'}">
+        🚛 Mudanza
+      </button>
+      <button onclick="_fnd.tipo='tapiceria';_fnd.correas=false;showMiniCotizadorFundas()"
+        style="flex:1;padding:10px;border-radius:10px;border:2px solid ${_fnd.tipo==='tapiceria'?'var(--primary)':'var(--border)'};background:${_fnd.tipo==='tapiceria'?'var(--primary-light)':'var(--surface)'};font-weight:700;font-size:13px;cursor:pointer;color:${_fnd.tipo==='tapiceria'?'var(--primary)':'var(--text2)'}">
+        🛋️ Tapicería
+      </button>
+    </div>
+  </div>
+
+  <!-- Precio base -->
+  ${bracket ? `<div style="background:var(--primary-light);border-radius:10px;padding:12px 14px;margin-bottom:12px">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <span style="font-size:13px;font-weight:600;color:var(--primary)">Funda ${_fnd.tipo==='mudanza'?'Mudanza':'Tapicería'}</span>
+      <span style="font-size:18px;font-weight:800;color:var(--primary)">${fmtMoney(precioFunda)}</span>
+    </div>
+  </div>` : ''}
+
+  <!-- Correas (solo mudanza) -->
+  ${_fnd.tipo==='mudanza' && bracket ? `
+  <label style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:10px;border:1.5px solid ${_fnd.correas?'var(--primary)':'var(--border)'};background:${_fnd.correas?'var(--primary-light)':'var(--surface)'};cursor:pointer;margin-bottom:10px"
+    onclick="_fnd.correas=!_fnd.correas;showMiniCotizadorFundas()">
+    <div style="width:20px;height:20px;border-radius:5px;border:2px solid ${_fnd.correas?'var(--primary)':'var(--border)'};background:${_fnd.correas?'var(--primary)':'transparent'};display:flex;align-items:center;justify-content:center;flex-shrink:0">
+      ${_fnd.correas?'<svg width="12" height="12" viewBox="0 0 12 12"><polyline points="2,6 5,9 10,3" stroke="#fff" stroke-width="2" fill="none"/></svg>':''}
+    </div>
+    <div style="flex:1">
+      <div style="font-size:13px;font-weight:700">🔗 Correas de amarre</div>
+      <div style="font-size:11px;color:var(--text2)">${correaLabel}</div>
+    </div>
+    ${_fnd.correas?`<span style="font-weight:700;color:var(--primary)">${fmtMoney(precioCorreas)}</span>`:''}
+  </label>` : ''}
+
+  <!-- Bolsas -->
+  ${bracket ? `
+  <label style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:10px;border:1.5px solid ${_fnd.bolsas?'var(--primary)':'var(--border)'};background:${_fnd.bolsas?'var(--primary-light)':'var(--surface)'};cursor:pointer;margin-bottom:14px"
+    onclick="_fnd.bolsas=!_fnd.bolsas;showMiniCotizadorFundas()">
+    <div style="width:20px;height:20px;border-radius:5px;border:2px solid ${_fnd.bolsas?'var(--primary)':'var(--border)'};background:${_fnd.bolsas?'var(--primary)':'transparent'};display:flex;align-items:center;justify-content:center;flex-shrink:0">
+      ${_fnd.bolsas?'<svg width="12" height="12" viewBox="0 0 12 12"><polyline points="2,6 5,9 10,3" stroke="#fff" stroke-width="2" fill="none"/></svg>':''}
+    </div>
+    <div style="flex:1">
+      <div style="font-size:13px;font-weight:700">👜 Bolsas (3 patas + lira)</div>
+      <div style="font-size:11px;color:var(--text2)">Juego completo — ${fmtMoney(getFundaBolsas())}</div>
+    </div>
+    ${_fnd.bolsas?`<span style="font-weight:700;color:var(--primary)">${fmtMoney(precioBolsas)}</span>`:''}
+  </label>` : ''}
+
+  <!-- Total -->
+  ${bracket && total>0 ? `
+  <div style="border-top:2px solid var(--border);padding:12px 0 4px;display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+    <span style="font-size:14px;font-weight:700">Total</span>
+    <span style="font-size:22px;font-weight:800;color:var(--primary)">${fmtMoney(total)}</span>
+  </div>` : ''}
+
+  <button class="btn btn-primary btn-full" ${!bracket?'disabled style="opacity:.4"':''} onclick="agregarFundaAPresupuesto()">
+    + Agregar al presupuesto
+  </button>`);
+
+  // Restore largo input value after openModal re-renders
+  setTimeout(()=>{
+    const el=document.getElementById('fnd-largo');
+    if(el&&_fnd.largo) el.value=_fnd.largo;
+  },30);
+}
+
+function agregarFundaAPresupuesto(){
+  const bracket = getBracket(parseInt(_fnd.largo));
+  if(!bracket){ showToast('Ingresa un largo válido (149–999 cm)'); return; }
+
+  const precioFunda = _fnd.tipo==='mudanza' ? bracket.mudanza : bracket.tapiceria;
+  const precioCorreas = (_fnd.correas && _fnd.tipo==='mudanza') ? bracket.precioCorreas : 0;
+  const precioBolsas = _fnd.bolsas ? getFundaBolsas() : 0;
+  const tipoLabel = _fnd.tipo==='mudanza' ? 'Mudanza' : 'Tapicería';
+
+  // Agregar funda como ítem
+  pbItems.push({
+    nombre:`Funda ${tipoLabel} — ${bracket.label}`,
+    precio: precioFunda,
+    tipo:'funda'
+  });
+
+  // Correas como ítem separado si aplica
+  if(precioCorreas>0){
+    pbItems.push({
+      nombre:`Correas de amarre (${bracket.correas} piezas)`,
+      precio: precioCorreas,
+      tipo:'funda'
+    });
+  }
+
+  // Bolsas como ítem separado si aplica
+  if(precioBolsas>0){
+    pbItems.push({
+      nombre:'Bolsas patas + lira (juego)',
+      precio: precioBolsas,
+      tipo:'funda'
+    });
+  }
+
+  // Reset fnd state
+  _fnd = {largo:'', tipo:'mudanza', correas:false, bolsas:false};
+  showToast('✅ Funda agregada al presupuesto');
+  _reopenPresupuestoModal();
 }
 
 // ══ INIT AUTO-PAUSA Y NOTIFICACIONES ══
