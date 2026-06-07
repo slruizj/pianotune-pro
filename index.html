@@ -285,7 +285,7 @@ textarea.input{resize:vertical;min-height:68px}
     ☁️ <span id="dt-sync-txt">Listo</span>
   </div>
   <div style="padding:10px 16px 14px">
-    <div style="color:rgba(255,255,255,.35);font-size:10px;font-weight:600;letter-spacing:.4px">PianoTune Pro v2.9.4</div>
+    <div style="color:rgba(255,255,255,.35);font-size:10px;font-weight:600;letter-spacing:.4px">PianoTune Pro v2.9.5</div>
   </div>
 </div>
 
@@ -1963,7 +1963,7 @@ function renderPresupuesto(){
 
 // ══ MODAL: NUEVO PRESUPUESTO ══
 let pbItems=[],pbCliId=null,pbPianoId=null;
-let pbForaneo=false;
+let pbForaneo=false,_pbEditId=null,_pbReturnFromMini=false;
 function toggleForaneo(){
   pbForaneo=!pbForaneo;
   const sw=document.getElementById('foraneo-switch');
@@ -1976,14 +1976,19 @@ function toggleForaneo(){
 // ── v2.9.4 — PRESUPUESTO MODAL UNIFICADO ──────────────────
 function _openPresupuestoModal(titulo, boton, preCliId, presExistente){
   // presExistente: presupuesto a editar, null=nuevo
-  if(presExistente){
-    pbItems=[...presExistente.items.map(i=>({...i}))];
-    pbCliId=presExistente.clienteId;
-    pbPianoId=presExistente.pianoId;
-    pbForaneo=false;
-  } else {
-    pbItems=[];pbCliId=preCliId||null;pbPianoId=null;pbForaneo=false;
+  if(!_pbReturnFromMini){
+    // Fresh open — reset state
+    if(presExistente){
+      pbItems=[...presExistente.items.map(i=>({...i}))];
+      pbCliId=presExistente.clienteId;
+      pbPianoId=presExistente.pianoId;
+      pbForaneo=false;
+    } else {
+      pbItems=[];pbCliId=preCliId||null;pbPianoId=null;pbForaneo=false;
+    }
   }
+  _pbReturnFromMini=false;
+  _pbEditId=presExistente?.id||null;
   const cliOpts=`<option value="">Seleccionar cliente…</option>`+state.clientes.map(c=>`<option value="${c.id}" ${c.id===(presExistente?presExistente.clienteId:preCliId)?'selected':''}>${c.nombre}</option>`).join('');
   const pOpts=(presExistente?.clienteId||preCliId)?buildPianoOpts(presExistente?.clienteId||preCliId):'<option value="">Selecciona cliente</option>';
   const editId = presExistente?presExistente.id:null;
@@ -2060,7 +2065,24 @@ function buildProdSelector(wrapId, selId, prId){
 }
 
 // ── Mini cotizador de cuerdas dentro del presupuesto ────────
+function _savePbDomState(){
+  // Guardar selección del DOM antes de navegar al mini cotizador
+  const cEl=document.getElementById('pb-c');
+  const pEl=document.getElementById('pb-p');
+  if(cEl&&cEl.value) pbCliId=parseInt(cEl.value)||null;
+  if(pEl&&pEl.value) pbPianoId=parseInt(pEl.value)||null;
+}
+
+function _reopenPresupuestoModal(){
+  _pbReturnFromMini=true;
+  const titulo=_pbEditId?'Modificar presupuesto':'Nuevo presupuesto';
+  const boton=_pbEditId?'Guardar cambios':'Crear presupuesto';
+  // presExistente=null because we use existing pbItems (not resetting from DB)
+  _openPresupuestoModal(titulo,boton,pbCliId,_pbEditId?{id:_pbEditId,clienteId:pbCliId,pianoId:pbPianoId,items:pbItems}:null);
+}
+
 function showMiniCotizadorCuerdas(){
+  _savePbDomState();
   const tipo=_cue.tipo||'vertical';
   const cats=CUE_CATS[tipo];
   const cat=cats.find(c=>c.id===_cue.catId)||cats[0];
@@ -2070,7 +2092,9 @@ function showMiniCotizadorCuerdas(){
   const anchor=getCueAnchor(tipo,cat.id);
   const precioUnit=Math.round(anchor*getCueFactor(tipoCuerda));
 
-  openModal(`<div class="modal-title">🎵 Agregar cuerda entorchada</div>
+  openModal(`<div class="modal-title" style="display:flex;align-items:center;gap:10px">
+    <button onclick="_reopenPresupuestoModal()" style="background:none;border:none;color:var(--primary);font-size:20px;cursor:pointer;padding:0 4px 0 0">←</button>
+    🎵 Agregar cuerda entorchada</div>
   <div style="display:flex;gap:8px;margin-bottom:12px">
     <button onclick="_cue.tipo='vertical';_cue.catId='esp';showMiniCotizadorCuerdas()"
       style="flex:1;padding:8px;border-radius:8px;border:2px solid ${tipo==='vertical'?'var(--primary)':'var(--border)'};background:${tipo==='vertical'?'var(--primary-light)':'var(--surface)'};font-weight:700;font-size:13px;cursor:pointer;color:${tipo==='vertical'?'var(--primary)':'var(--text2)'}">Vertical</button>
@@ -2106,9 +2130,8 @@ function agregarCuerdaAPresupuesto(){
     pbItems.push({nombre, precio:precioUnit, tipo:'cuerda'});
   }
   _cue.cantidad=1;
-  closeModal();
-  setTimeout(()=>renderPbItems(),100);
-  showToast(`✅ ${_cue.cantidad||1} cuerda(s) agregada(s) al presupuesto`);
+  showToast('✅ Cuerda agregada al presupuesto');
+  _reopenPresupuestoModal();
 }
 function onPbCliChange(){const cId=document.getElementById('pb-c').value;const sel=document.getElementById('pb-p');if(sel)sel.innerHTML=cId?buildPianoOpts(cId):'<option value="">Selecciona cliente</option>';}
 function updPrecioPresupuesto(){svcSelChange('pb-s','pb-pr');}
@@ -2417,7 +2440,7 @@ function renderConfig(){
 
   <div class="credits-block">
     <div class="credits-logo">🎹</div>
-    <div class="credits-app">PianoTune Pro v2.9.4</div>
+    <div class="credits-app">PianoTune Pro v2.9.5</div>
     <div class="credits-dev">Desarrollado por Sergio L. Ruiz Jones</div>
     <div class="credits-co">Pianos and Pianos — Mazatlán, Sin.</div>
   </div>`;
@@ -2495,7 +2518,7 @@ navigate('inicio');
 // ══ PWA: SERVICE WORKER ══
 if('serviceWorker' in navigator){
   const swCode=`
-const CACHE='pianotune-v2.9.4'; // v2.9.4
+const CACHE='pianotune-v2.9.5'; // v2.9.5
 const ASSETS=['/'];
 self.addEventListener('install',e=>{
   e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)).then(()=>self.skipWaiting()));
