@@ -1656,9 +1656,9 @@ function buildSvcSelector(wrapperId, inputId, priceId, preSelId){
       </select>`;
   }
   render();
-  // Store active cat on wrapper for external access
-  wrap._svcActiveCat = activeCat;
-  wrap._svcRender = render;
+  // Store render fn on wrapper for external access
+  const _w = document.getElementById(wrapperId);
+  if(_w){_w._svcActiveCat = activeCat; _w._svcRender = render;}
 }
 function svcCatClick(wrapperId, inputId, priceId, preSelId, cat){
   const wrap = document.getElementById(wrapperId); if(!wrap) return;
@@ -2188,40 +2188,61 @@ function editarPresupuesto(id){
 // ── Mini selector de productos para presupuesto ────────────
 let _pbProdCat='';
 function buildProdSelector(wrapId, selId, prId){
-  const wrap=document.getElementById(wrapId);
+  var wrap=document.getElementById(wrapId);
   if(!wrap)return;
   if(!state.productos||!state.productos.length){
-    wrap.innerHTML='<div style="font-size:12px;color:var(--text3);padding:4px 0">Sin productos. Ve a Config → Catálogo inicial de productos.</div>';
+    wrap.textContent='';
+    var msg=document.createElement('div');
+    msg.style.cssText='font-size:12px;color:var(--text3);padding:4px 0';
+    msg.textContent='Sin productos. Ve a Config → Catálogo inicial de productos.';
+    wrap.appendChild(msg);
     return;
   }
-  const cats=[...new Set(state.productos.map(p=>p.categoria||'Sin categoría'))].sort();
-  if(!_pbProdCat||!cats.includes(_pbProdCat))_pbProdCat=cats[0];
-  const filtered=state.productos.filter(p=>(p.categoria||'Sin categoría')===_pbProdCat);
-  // Build pills HTML
-  let pillsHtml='<div style="display:flex;gap:5px;flex-wrap:wrap;padding:2px 0 8px">';
+  var cats=[...new Set(state.productos.map(function(p){return p.categoria||'Sin categoría';}))].sort();
+  if(!_pbProdCat||cats.indexOf(_pbProdCat)===-1)_pbProdCat=cats[0];
+  var filtered=state.productos.filter(function(p){return (p.categoria||'Sin categoría')===_pbProdCat;});
+  // Clear wrap
+  wrap.textContent='';
+  // Pills container
+  var pillsDiv=document.createElement('div');
+  pillsDiv.style.cssText='display:flex;gap:5px;flex-wrap:wrap;padding:2px 0 8px';
   cats.forEach(function(cat){
-    const active=cat===_pbProdCat;
-    pillsHtml+='<button type="button" onclick="_pbProdCat=\''+cat+'\';buildProdSelector(\''+wrapId+'\',\''+selId+'\',\''+prId+'\');"'
-      +' style="flex-shrink:0;padding:4px 10px;border-radius:20px;border:1.5px solid '+(active?'var(--primary)':'var(--border)')
-      +';background:'+(active?'var(--primary)':'var(--surface)')+';color:'+(active?'#fff':'var(--text2)')
-      +';font-size:11px;font-weight:600;cursor:pointer">'+cat+'</button>';
+    var btn=document.createElement('button');
+    btn.type='button';
+    btn.textContent=cat;
+    var active=cat===_pbProdCat;
+    btn.style.cssText='flex-shrink:0;padding:4px 10px;border-radius:20px;'
+      +'border:1.5px solid '+(active?'var(--primary)':'var(--border)')
+      +';background:'+(active?'var(--primary)':'var(--surface)')
+      +';color:'+(active?'#fff':'var(--text2)')
+      +';font-size:11px;font-weight:600;cursor:pointer';
+    btn.addEventListener('click',function(){
+      _pbProdCat=cat;
+      buildProdSelector(wrapId,selId,prId);
+    });
+    pillsDiv.appendChild(btn);
   });
-  pillsHtml+='</div>';
-  // Build select HTML
-  let optsHtml='';
+  wrap.appendChild(pillsDiv);
+  // Select
+  var sel=document.createElement('select');
+  sel.className='input select';
+  sel.id=selId;
   filtered.forEach(function(p){
-    const label=p.nombre+(p.precio>0?' — '+fmtMoney(p.precio):'');
-    optsHtml+='<option value="'+p.id+'">'+label+'</option>';
+    var opt=document.createElement('option');
+    opt.value=p.id;
+    opt.textContent=p.nombre+(p.precio>0?' — '+fmtMoney(p.precio):'');
+    sel.appendChild(opt);
   });
-  let selHtml='<select class="input select" id="'+selId+'" onchange="'
-    +'var p=state.productos.find(function(x){return x.id===parseInt(this.value);}.bind(this));'
-    +'var el=document.getElementById(\''+prId+'\');if(el&&p)el.value=p.precio||0;">'
-    +optsHtml+'</select>';
-  wrap.innerHTML=pillsHtml+selHtml;
-  // Auto-fill price for first visible product
-  var sel=document.getElementById(selId);
+  sel.addEventListener('change',function(){
+    var p=state.productos.find(function(x){return x.id===parseInt(sel.value);});
+    var prEl=document.getElementById(prId);
+    if(prEl&&p)prEl.value=p.precio||0;
+  });
+  wrap.appendChild(sel);
+  // Auto-fill price for first item
+  var first=filtered[0];
   var prEl=document.getElementById(prId);
-  if(sel&&prEl){var p=state.productos.find(function(x){return x.id===parseInt(sel.value);});if(p)prEl.value=p.precio||0;}
+  if(prEl&&first)prEl.value=first.precio||0;
 }
 
 // ── Mini cotizador de mudanza dentro del presupuesto ───────
