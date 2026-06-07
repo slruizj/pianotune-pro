@@ -2186,30 +2186,42 @@ function editarPresupuesto(id){
 }
 
 // ── Mini selector de productos para presupuesto ────────────
+let _pbProdCat='';
 function buildProdSelector(wrapId, selId, prId){
-  const wrap=document.getElementById(wrapId);if(!wrap)return;
+  const wrap=document.getElementById(wrapId);
+  if(!wrap)return;
   if(!state.productos||!state.productos.length){
-    wrap.innerHTML=`<div style="font-size:12px;color:var(--text3);padding:4px 0">Sin productos en catálogo. Ve a Inventario → Config → Importar catálogo.</div>`;
+    wrap.innerHTML='<div style="font-size:12px;color:var(--text3);padding:4px 0">Sin productos. Ve a Config → Catálogo inicial de productos.</div>';
     return;
   }
   const cats=[...new Set(state.productos.map(p=>p.categoria||'Sin categoría'))].sort();
-  if(!wrap._prodCat)wrap._prodCat=cats[0];
-  function renderSel(){
-    const activeCat=wrap._prodCat;
-    const filtered=state.productos.filter(p=>(p.categoria||'Sin categoría')===activeCat);
-    wrap.innerHTML=`
-      <div style="display:flex;gap:5px;flex-wrap:wrap;padding:2px 0 8px">
-        ${cats.map(cat=>`<button type="button" onclick="document.getElementById('${wrapId}')._prodCat='${cat.replace(/'/g,"\\'")}';buildProdSelector('${wrapId}','${selId}','${prId}')" style="flex-shrink:0;padding:4px 10px;border-radius:20px;border:1.5px solid ${activeCat===cat?'var(--primary)':'var(--border)'};background:${activeCat===cat?'var(--primary)':'var(--surface)'};color:${activeCat===cat?'#fff':'var(--text2)'};font-size:11px;font-weight:600;cursor:pointer">${cat}</button>`).join('')}
-      </div>
-      <select class="input select" id="${selId}" onchange="const p=state.productos.find(x=>x.id===parseInt(this.value));const el=document.getElementById('${prId}');if(el&&p)el.value=p.precio||0">
-        ${filtered.map(p=>`<option value="${p.id}" data-precio="${p.precio||0}">${p.nombre}${p.precio>0?' — '+fmtMoney(p.precio):''}</option>`).join('')}
-      </select>`;
-    // Auto-fill price for first item
-    const sel=document.getElementById(selId);
-    const prEl=document.getElementById(prId);
-    if(sel&&prEl){const p=state.productos.find(x=>x.id===parseInt(sel.value));if(p)prEl.value=p.precio||0;}
-  }
-  renderSel();
+  if(!_pbProdCat||!cats.includes(_pbProdCat))_pbProdCat=cats[0];
+  const filtered=state.productos.filter(p=>(p.categoria||'Sin categoría')===_pbProdCat);
+  // Build pills HTML
+  let pillsHtml='<div style="display:flex;gap:5px;flex-wrap:wrap;padding:2px 0 8px">';
+  cats.forEach(function(cat){
+    const active=cat===_pbProdCat;
+    pillsHtml+='<button type="button" onclick="_pbProdCat=\''+cat+'\';buildProdSelector(\''+wrapId+'\',\''+selId+'\',\''+prId+'\');"'
+      +' style="flex-shrink:0;padding:4px 10px;border-radius:20px;border:1.5px solid '+(active?'var(--primary)':'var(--border)')
+      +';background:'+(active?'var(--primary)':'var(--surface)')+';color:'+(active?'#fff':'var(--text2)')
+      +';font-size:11px;font-weight:600;cursor:pointer">'+cat+'</button>';
+  });
+  pillsHtml+='</div>';
+  // Build select HTML
+  let optsHtml='';
+  filtered.forEach(function(p){
+    const label=p.nombre+(p.precio>0?' — '+fmtMoney(p.precio):'');
+    optsHtml+='<option value="'+p.id+'">'+label+'</option>';
+  });
+  let selHtml='<select class="input select" id="'+selId+'" onchange="'
+    +'var p=state.productos.find(function(x){return x.id===parseInt(this.value);}.bind(this));'
+    +'var el=document.getElementById(\''+prId+'\');if(el&&p)el.value=p.precio||0;">'
+    +optsHtml+'</select>';
+  wrap.innerHTML=pillsHtml+selHtml;
+  // Auto-fill price for first visible product
+  var sel=document.getElementById(selId);
+  var prEl=document.getElementById(prId);
+  if(sel&&prEl){var p=state.productos.find(function(x){return x.id===parseInt(sel.value);});if(p)prEl.value=p.precio||0;}
 }
 
 // ── Mini cotizador de mudanza dentro del presupuesto ───────
