@@ -79,6 +79,8 @@ textarea.input{resize:vertical;min-height:68px}
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.48);z-index:200;display:flex;align-items:flex-end;justify-content:center}
 .modal{background:var(--surface);border-radius:20px 20px 0 0;padding:18px 18px calc(20px + var(--safe-b));width:100%;max-width:430px;max-height:92dvh;overflow-y:auto}
 .modal-handle{width:36px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 14px}
+.modal-close{position:sticky;top:2px;margin:-6px -2px 0 auto;display:flex;align-items:center;justify-content:center;width:32px;height:32px;border:none;background:rgba(0,0,0,.06);color:var(--text2);border-radius:50%;font-size:15px;cursor:pointer;z-index:10;flex:none}
+.modal-close:active{background:rgba(0,0,0,.14)}
 .modal-title{font-size:18px;font-weight:700;margin-bottom:14px}
 .modal-sub{font-size:12px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin:14px 0 8px;padding-bottom:6px;border-bottom:1px solid var(--border)}
 /* STATS */
@@ -100,6 +102,7 @@ textarea.input{resize:vertical;min-height:68px}
 .event-blue{border-left-color:var(--primary)}
 .event-red{border-left-color:var(--danger)}
 .event-gray{border-left-color:var(--text3)}
+.event-yellow{border-left-color:var(--warning)}
 /* SEGMENT */
 .segment{display:flex;background:var(--bg);border-radius:var(--radius-sm);padding:3px;margin:0 16px 10px}
 .seg-btn{flex:1;padding:7px;border:none;background:none;border-radius:7px;font-size:13px;font-weight:600;color:var(--text2);cursor:pointer;transition:all .15s}
@@ -309,6 +312,7 @@ textarea.input{resize:vertical;min-height:68px}
     <div id="screen-productos" class="screen hidden"></div>
     <div id="screen-presupuesto" class="screen hidden"></div>
     <div id="screen-config" class="screen hidden"></div>
+    <div id="screen-historial" class="screen hidden"></div>
   </div>
 </div>
 
@@ -341,9 +345,10 @@ textarea.input{resize:vertical;min-height:68px}
 
 <button class="fab hidden" id="fab" onclick="onFabClick()">+</button>
 
-<div id="modal-overlay" class="modal-overlay hidden" onclick="closeModal()">
-  <div class="modal" onclick="event.stopPropagation()" id="modal-box">
+<div id="modal-overlay" class="modal-overlay hidden">
+  <div class="modal" id="modal-box">
     <div class="modal-handle"></div>
+    <button class="modal-close" onclick="closeModal()" aria-label="Cerrar">✕</button>
     <div id="modal-body"></div>
   </div>
 </div>
@@ -527,6 +532,7 @@ function defaultState(){
     googleUser:null,
     tecnico:{nombre:'Sergio Ruiz',whatsapp:'6691234567',telefono:'',email:'',pausaHora:20,foto:'',datosBancarios:'BBVA · CLABE: 012150001234567890 · Sergio Ruiz',constanciaFiscal:''},
     nextId:300,
+    deleted:[],
   };
 }
 
@@ -545,6 +551,7 @@ function migrate(s){
     if(!c.rfc)c.rfc='';
     if(!c.razonSocial)c.razonSocial='';
     if(!c.cp)c.cp='';
+    if(!c.tipoCliente)c.tipoCliente='particular';
   });
   s.citas.forEach(c=>{if(!c.pianoId)c.pianoId=null;if(!c.duracionH)c.duracionH=c.duracion?+(c.duracion/60).toFixed(1):1.5;});
   if(!s.kmTotal)s.kmTotal=0;
@@ -584,8 +591,31 @@ function migrate(s){
     if(!c.cobro)c.cobro={monto:0,formaPago:'',fechaCobro:'',anticipo:0,notas:''};
     if(!c.facturaInfo)c.facturaInfo={fechaFacturado:'',tipoFactura:''};
     if(!c.recurrencia)c.recurrencia={cicloMeses:0,servicioId:null,fechaSugerida:''};
-    // Map old estados to new
-    if(c.estado==='realizado')c.estado='facturado';
+  });
+  // v2.10 (cimientos) — estructura de cobro/factura en 3 ejes (en paralelo, NO toca estado)
+  s.citas.forEach(c=>{
+    if(!c.cobro)c.cobro={};
+    if(typeof c.cobro.total!=='number'||!c.cobro.total)c.cobro.total=Number(c.precio||0);
+    if(!Array.isArray(c.cobro.pagos)){
+      c.cobro.pagos=[];
+      const lm=Number(c.cobro.monto||0),la=Number(c.cobro.anticipo||c.anticipo||0);
+      const pagados=['cobrado_efectivo','cobrado_transferencia','depositado','por_facturar','facturado'];
+      const forma=c.cobro.formaPago||(c.estado==='cobrado_efectivo'?'efectivo':(c.estado==='cobrado_transferencia'||c.estado==='depositado')?'transferencia':'');
+      if(lm>0)c.cobro.pagos.push({monto:lm,forma,fecha:c.cobro.fechaCobro||c.fecha||'',referencia:''});
+      else if(pagados.includes(c.estado))c.cobro.pagos.push({monto:c.cobro.total,forma,fecha:c.cobro.fechaCobro||c.fecha||'',referencia:''});
+      else if(la>0)c.cobro.pagos.push({monto:la,forma:c.cobro.formaPago||'',fecha:'',referencia:'',anticipo:true});
+    }
+    if(!c.factura){
+      const fact=(c.facturaInfo&&c.facturaInfo.fechaFacturado)||c.estado==='facturado';
+      c.factura={facturado:!!fact,tipoComprobante:fact?'PUE':'',receptor:fact?'cliente':'',fecha:fact?((c.facturaInfo&&c.facturaInfo.fechaFacturado)||c.fecha||''):'',folio:''};
+    }
+    if(c.estado!=='pausado')c.estado=opEstado(c);
+  });
+  // v2.9.9 — Migración de confiabilidad: sello por registro + tombstones
+  if(!s.deleted)s.deleted=[];
+  const _mts=s._syncTs||Date.now();
+  ['clientes','citas','presupuestos','productos','servicios'].forEach(col=>{
+    (s[col]||[]).forEach(r=>{if(r&&!r.updatedAt)r.updatedAt=_mts;});
   });
 }
 // ── v2.8.1 — SYNC GOOGLE SHEETS (CORS fix: Content-Type text/plain) ─────────
@@ -594,20 +624,65 @@ const SYNC_SECRET='pianotune_2025_sync';
 let _syncTimer=null;
 let _syncStatus='idle'; // idle | syncing | ok | error
 
+// v2.9.9 — Confiabilidad: detección automática de cambios por snapshot
+const SYNC_COLS=['clientes','citas','presupuestos','productos','servicios'];
+let _snap={};
+function _recJson(r){return JSON.stringify({...r,updatedAt:undefined});}
+function _snapshotAll(){_snap={};SYNC_COLS.forEach(col=>{_snap[col]={};(state[col]||[]).forEach(r=>{if(r&&r.id!=null)_snap[col][r.id]=_recJson(r);});});}
+function _stampChanges(){const now=Date.now();SYNC_COLS.forEach(col=>{const prev=_snap[col]||{};(state[col]||[]).forEach(r=>{if(!r||r.id==null)return;const j=_recJson(r);const pj=prev[r.id];if(pj===undefined){if(!r.updatedAt)r.updatedAt=now;}else if(pj!==j){r.updatedAt=now;}});});_snapshotAll();}
+function tombstone(col,id){state.deleted=state.deleted||[];state.deleted=state.deleted.filter(t=>!(t.col===col&&t.id===id));state.deleted.push({col,id,ts:Date.now()});}
 function saveState(){
+  _stampChanges();
   try{localStorage.setItem(SK,JSON.stringify(state));}catch(e){}
   clearTimeout(_syncTimer);
   _syncTimer=setTimeout(pushToCloud,5000);
 }
-async function pushToCloud(){
-  // v2.8.3 — guard: no push en primer arranque hasta haber hecho pull
-  if(!state._hasPulled){
-    console.log('Push bloqueado: esperando pull inicial');
-    await pullFromCloud();return;
+// v2.9.9 — Merge por registro: "última actualización gana" por registro, no por blob
+function mergeState(remote){
+  if(!remote||typeof remote!=='object')return;
+  SYNC_COLS.forEach(c=>{if(!Array.isArray(remote[c]))remote[c]=[];});
+  try{migrate(remote);}catch(e){console.warn('migrate(remote):',e);}
+  // Unir tombstones (gana el más reciente por col+id)
+  const tomb={};
+  [...(state.deleted||[]),...(remote.deleted||[])].forEach(t=>{const k=t.col+':'+t.id;if(!tomb[k]||t.ts>tomb[k].ts)tomb[k]=t;});
+  const tombTs=(col,id)=>{const t=tomb[col+':'+id];return t?t.ts:0;};
+  // Por colección: unir por id, gana updatedAt mayor; tombstone más nuevo elimina
+  SYNC_COLS.forEach(col=>{
+    const byId={};
+    (state[col]||[]).forEach(r=>{if(r&&r.id!=null)byId[r.id]=r;});
+    (remote[col]||[]).forEach(r=>{if(!r||r.id==null)return;const ex=byId[r.id];if(!ex||(r.updatedAt||0)>(ex.updatedAt||0))byId[r.id]=r;});
+    state[col]=Object.values(byId).filter(r=>{const tt=tombTs(col,r.id);return !(tt&&tt>=(r.updatedAt||0));});
+  });
+  // Config y escalares: gana el blob más reciente por _syncTs (rara vez chocan)
+  if((remote._syncTs||0)>(state._syncTs||0)){
+    Object.keys(remote).forEach(k=>{
+      if(SYNC_COLS.includes(k))return;
+      if(['deleted','_syncTs','_hasPulled','_needsPush','nextId','catalogVersion'].includes(k))return;
+      state[k]=remote[k];
+    });
   }
-  state._syncTs=Date.now();
-  try{localStorage.setItem(SK,JSON.stringify(state));}catch(e){}
+  state.nextId=Math.max(state.nextId||0,remote.nextId||0);
+  // Conservar tombstones fusionados, podar > 90 días
+  const cutoff=Date.now()-90*864e5;
+  state.deleted=Object.values(tomb).filter(t=>t.ts>cutoff);
+}
+async function fetchRemote(){
+  try{
+    const res=await fetch(`${SCRIPT_URL}?secret=${SYNC_SECRET}&_=${Date.now()}`);
+    const json=await res.json();
+    if(json.ok&&json.data&&json.data!=='{}')return JSON.parse(json.data);
+  }catch(err){console.warn('fetchRemote falló:',err);}
+  return null;
+}
+async function pushToCloud(){
+  if(!state._hasPulled){console.log('Push diferido: pull inicial primero');await pullFromCloud();return;}
   _syncStatus='syncing';updateSyncBar();
+  // Pull-antes-de-push: fusiona lo remoto para no pisar registros del otro dispositivo
+  const remote=await fetchRemote();
+  if(remote)mergeState(remote);
+  state._syncTs=Date.now();
+  _snapshotAll();
+  try{localStorage.setItem(SK,JSON.stringify(state));}catch(e){}
   try{
     const res=await fetch(SCRIPT_URL,{method:'POST',headers:{'Content-Type':'text/plain'},
       body:JSON.stringify({secret:SYNC_SECRET,data:JSON.stringify(state),device:state.tecnico?.nombre||'dispositivo',ts:state._syncTs})});
@@ -619,36 +694,21 @@ async function pushToCloud(){
 }
 async function pullFromCloud(){
   _syncStatus='syncing';updateSyncBar();
-  try{
-    const res=await fetch(`${SCRIPT_URL}?secret=${SYNC_SECRET}&_=${Date.now()}`);
-    const json=await res.json();
-    if(json.ok&&json.data&&json.data!=='{}'){
-      const remote=JSON.parse(json.data);
-      if((remote._syncTs||0)>(state._syncTs||0)){
-        migrate(remote);
-        // Catálogo más completo siempre gana — no pisar productos/servicios si local tiene más
-        const localProds=state.productos||[];
-        const localSvcs=state.servicios||[];
-        Object.assign(state,remote);
-        if(localProds.length>(state.productos||[]).length){
-          state.productos=localProds;
-          state._needsPush=true; // marcar para reenviar a la nube
-        }
-        if(localSvcs.length>(state.servicios||[]).length){
-          state.servicios=localSvcs;
-          state._needsPush=true;
-        }
-        try{localStorage.setItem(SK,JSON.stringify(state));}catch(e){}
-        recalcEstados();renderScreen(currentScreen);
-        showToast('☁️ Datos actualizados desde la nube ✓');
-        if(state._needsPush){state._needsPush=false;setTimeout(pushToCloud,2000);}
-      }
-    }
-    // v2.8.3 — marcar que ya hicimos pull, habilitar push
-    state._hasPulled=true;
+  const remote=await fetchRemote();
+  if(remote){
+    const before=JSON.stringify(state);
+    mergeState(remote);
+    const changed=JSON.stringify(state)!==before;
+    recalcEstados();
+    _snapshotAll();
     try{localStorage.setItem(SK,JSON.stringify(state));}catch(e){}
-    _syncStatus='ok';
-  }catch(err){_syncStatus='error';console.warn('Sync pull failed:',err);}
+    if(typeof currentScreen!=='undefined')renderScreen(currentScreen);
+    if(changed)showToast('☁️ Datos sincronizados ✓');
+  }
+  state._hasPulled=true;
+  _snapshotAll();
+  try{localStorage.setItem(SK,JSON.stringify(state));}catch(e){}
+  _syncStatus='ok';
   updateSyncBar();
 }
 function updateSyncBar(){
@@ -665,14 +725,19 @@ function updateSyncBar(){
 }
 function recalcEstados(){
   const hoy=new Date();hoy.setHours(0,0,0,0);
-  const activos=['en_curso','pausado','cerrado_sin_cobro','cobrado_efectivo','cobrado_transferencia','depositado','por_facturar','facturado','cancelado'];
   state.citas.forEach(c=>{
-    if(activos.includes(c.estado))return;
-    c.estado=new Date(c.fecha+'T00:00:00')<hoy?'vencido':'pendiente';
+    const op=opEstado(c);
+    if(op==='pendiente'||op==='vencida'){
+      c.estado=(c.fecha&&new Date(c.fecha+'T00:00:00')<hoy)?'vencida':'pendiente';
+    }
   });
 }
 recalcEstados();
-function nextId(){return++state.nextId;}
+// v2.9.9 — sello inicial de registros y snapshot base
+SYNC_COLS.forEach(col=>(state[col]||[]).forEach(r=>{if(r&&!r.updatedAt)r.updatedAt=Date.now();}));
+if(!state.deleted)state.deleted=[];
+_snapshotAll();
+function nextId(){state.nextId=(state.nextId||0)+1;return Date.now()*1000+Math.floor(Math.random()*1000);}
 
 // ══ HELPERS ══
 const initials=n=>n.split(' ').slice(0,2).map(w=>w[0]).join('').toUpperCase();
@@ -680,19 +745,58 @@ const fmtDate=iso=>{const[y,m,d]=iso.split('-');return`${d}/${m}/${y}`;};
 const fmtMoney=n=>'$'+Number(n).toLocaleString('es-MX');
 const getCliente=id=>state.clientes.find(c=>c.id===id);
 const getPiano=(cId,pId)=>{const c=getCliente(cId);return c&&c.pianos.find(p=>p.id===pId);};
+// ── v2.10 (cimientos) — Modelo de servicio en 3 ejes (derivado, compatible con estados viejos) ──
+function cobroTotal(c){
+  if(c.cobro&&typeof c.cobro.total==='number'&&c.cobro.total>0)return c.cobro.total;
+  return Number(c.precio||0);
+}
+function montoPagado(c){
+  if(c.cobro&&Array.isArray(c.cobro.pagos))return c.cobro.pagos.reduce((s,p)=>s+(Number(p.monto)||0),0);
+  if(c.cobro&&Number(c.cobro.monto)>0)return Number(c.cobro.monto);
+  if(['cobrado_efectivo','cobrado_transferencia','depositado','por_facturar','facturado'].includes(c.estado))return cobroTotal(c);
+  return Number((c.cobro&&c.cobro.anticipo)||c.anticipo||0);
+}
+function saldoCita(c){return Math.max(0,cobroTotal(c)-montoPagado(c));}
+function cobroEstado(c){const t=cobroTotal(c),p=montoPagado(c);if(p<=0)return'sin_cobrar';if(p<t)return'anticipo';return'pagada';}
+function estaFacturada(c){
+  if(c.factura&&c.factura.facturado)return true;
+  if(c.facturaInfo&&c.facturaInfo.fechaFacturado)return true;
+  if(c.estado==='facturado')return true;
+  return false;
+}
+function opEstado(c){
+  const e=c.estado;
+  if(e==='pendiente')return'pendiente';
+  if(e==='vencido'||e==='vencida')return'vencida';
+  if(e==='en_curso'||e==='pausado'||e==='pausada')return'en_curso';
+  if(e==='cancelado'||e==='cancelada')return'cancelada';
+  return'realizada';
+}
+function etiquetaCita(c){
+  const op=opEstado(c);
+  if(op==='pendiente')return'Pendiente';
+  if(op==='vencida')return'Vencida';
+  if(op==='en_curso')return(c.estado==='pausado'||c.pausada)?'En curso (pausada)':'En curso';
+  if(op==='cancelada')return'Cancelada';
+  const fact=estaFacturada(c),ce=cobroEstado(c);
+  if(fact&&ce==='pagada')return'Cerrada';
+  if(fact)return'Facturada · esperando pago';
+  if(ce==='pagada')return'Pagada · sin factura';
+  if(ce==='anticipo')return'Realizada · anticipo';
+  return'Realizada · por cobrar';
+}
+function citaArchivada(c){return !!c.archivada||opEstado(c)==='cancelada'||(opEstado(c)==='realizada'&&estaFacturada(c)&&saldoCita(c)<=0);}
+function enPorCobrar(c){return opEstado(c)==='realizada'&&!c.archivada&&saldoCita(c)>0;}
+function enPorFacturar(c){return opEstado(c)==='realizada'&&!c.archivada&&saldoCita(c)<=0&&!estaFacturada(c);}
 const citaColor=c=>{
-  const map={pendiente:'blue',en_curso:'warning',cerrado_sin_cobro:'orange',
-    cobrado_efectivo:'purple',cobrado_transferencia:'teal',depositado:'teal',
-    por_facturar:'green',facturado:'gray',vencido:'red',cancelado:'gray'};
-  return map[c.estado]||'blue';
+  const op=opEstado(c);
+  if(op==='cancelada')return'gray';
+  if(op==='vencida')return'red';
+  if(op==='pendiente')return'blue';
+  if(op==='en_curso')return'yellow';
+  return(estaFacturada(c)&&cobroEstado(c)==='pagada')?'green':'yellow';
 };
-const estadoLabel=c=>{
-  const map={pendiente:'Pendiente',en_curso:'En curso',cerrado_sin_cobro:'Sin cobro',
-    cobrado_efectivo:'Efectivo s/depositar',cobrado_transferencia:'Por facturar',
-    depositado:'Por facturar',por_facturar:'Por facturar',
-    facturado:'Facturado',vencido:'Vencida',cancelado:'Cancelado'};
-  return map[c.estado]||c.estado;
-};
+const estadoLabel=c=>etiquetaCita(c);
 const pianoLabel=p=>p?`${p.marca} ${p.modelo} (${p.tipo})`:'';
 const estClass=e=>({Excelente:'est-bueno',Bueno:'est-bueno',Regular:'est-regular','Necesita reparación':'est-malo',Crítico:'est-malo'})[e]||'';
 const distKm=(la1,lo1,la2,lo2)=>{const R=6371,dLat=(la2-la1)*Math.PI/180,dLon=(lo2-lo1)*Math.PI/180,a=Math.sin(dLat/2)**2+Math.cos(la1*Math.PI/180)*Math.cos(la2*Math.PI/180)*Math.sin(dLon/2)**2;return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));};
@@ -729,12 +833,12 @@ function onFabClick(){
 function renderScreen(n){
   ({inicio:renderInicio,clientes:renderClientes,calendario:renderCalendario,
     servicios:renderServicios,productos:renderProductos,presupuesto:renderPresupuesto,
-    config:renderConfig,cotizador:renderCotizadorCuerdas})[n]?.();
+    config:renderConfig,historial:renderHistorial,cotizador:renderCotizadorCuerdas})[n]?.();
 }
 
 // ══ MODAL ══
 function openModal(html){document.getElementById('modal-body').innerHTML=html;document.getElementById('modal-overlay').classList.remove('hidden');}
-function closeModal(){document.getElementById('modal-overlay').classList.add('hidden');document.getElementById('modal-body').innerHTML='';}
+function closeModal(){document.getElementById('modal-overlay').classList.add('hidden');document.getElementById('modal-body').innerHTML='';if(_pendingRelayout){_pendingRelayout=false;if(isDesktop()!==_dtInited){_dtInited=isDesktop();location.reload();}}}
 
 // ══ GPS ══
 function capturarGPS(cbOk,cbErr){
@@ -797,13 +901,12 @@ async function renderInicio(){
     :`<div class="avatar" style="width:44px;height:44px;font-size:16px">${initials(tec.nombre||'SR')}</div>`;
 
   // Categorize citas
-  const enCurso=state.citas.filter(c=>c.estado==='en_curso');
-  const pausados=state.citas.filter(c=>c.estado==='pausado');
-  const sinCobro=state.citas.filter(c=>c.estado==='cerrado_sin_cobro');
-  const sinDeposito=state.citas.filter(c=>c.estado==='cobrado_efectivo');
-  const porFacturar=state.citas.filter(c=>['cobrado_transferencia','depositado','por_facturar'].includes(c.estado));
-  const proximos=state.citas.filter(c=>c.estado==='pendiente').sort((a,b)=>a.fecha.localeCompare(b.fecha)).slice(0,4);
-  const vencidos=state.citas.filter(c=>c.estado==='vencido').slice(0,3);
+  const enCurso=state.citas.filter(c=>opEstado(c)==='en_curso'&&!(c.estado==='pausado'||c.pausada));
+  const pausados=state.citas.filter(c=>opEstado(c)==='en_curso'&&(c.estado==='pausado'||c.pausada));
+  const porCobrar=state.citas.filter(enPorCobrar);
+  const porFacturar=state.citas.filter(enPorFacturar);
+  const proximos=state.citas.filter(c=>opEstado(c)==='pendiente').sort((a,b)=>a.fecha.localeCompare(b.fecha)).slice(0,4);
+  const vencidos=state.citas.filter(c=>opEstado(c)==='vencida').slice(0,3);
 
   // Recurrencias por vencer (pianos con ciclo definido)
   const porVencer=[];
@@ -818,8 +921,8 @@ async function renderInicio(){
     });
   });
 
-  const totalEfectivo=sinDeposito.reduce((s,c)=>s+(c.cobro?.monto||0),0);
-  const totalFacturar=porFacturar.reduce((s,c)=>s+(c.cobro?.monto||0),0);
+  const totalPorCobrar=porCobrar.reduce((s,c)=>s+saldoCita(c),0);
+  const totalPorFacturar=porFacturar.reduce((s,c)=>s+montoPagado(c),0);
 
   const renderCard=(c,acciones)=>{
     const cli=getCliente(c.clienteId);const piano=getPiano(c.clienteId,c.pianoId);
@@ -880,42 +983,38 @@ async function renderInicio(){
     </div>`);
   }).join('');
 
-  const renderSinCobro=sinCobro.map(c=>{
-    const cli=getCliente(c.clienteId);const piano=getPiano(c.clienteId,c.pianoId);
-    const total=(c.ordenServicio?.items||c.items||[]).reduce((s,i)=>s+Number(i.precio),0)||c.precio||0;
+  const renderPorCobrar=porCobrar.map(c=>{
+    const total=cobroTotal(c),pagado=montoPagado(c),saldo=saldoCita(c),fact=estaFacturada(c);
+    const cli=getCliente(c.clienteId);const esEmp=cli&&cli.tipoCliente==='empresarial';
+    const badge=fact?`<span class="tag tag-blue" style="font-size:9px">Facturada ${c.factura?.tipoComprobante||'PUE'}</span>`:'';
+    const antLine=pagado>0?`<div style="font-size:11px;color:var(--text2);margin-bottom:6px">Anticipo: ${fmtMoney(pagado)} · Saldo: <b style="color:var(--danger)">${fmtMoney(saldo)}</b></div>`:'';
+    const btnFact=!fact?`<button class="btn ${esEmp?'btn-primary':'btn-ghost'} btn-xs" onclick="modalFacturar(${c.id})">🧾 Facturar</button>`:'';
     return renderCard(c,`
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-      <span style="font-size:12px;color:var(--text2)">Cerrado: ${c.ordenServicio?.fechaCierre?fmtDate(c.ordenServicio.fechaCierre):fmtDate(c.fecha)}</span>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+      <span style="font-size:12px;color:var(--text2)">${fact?'🧾 Facturada · esperando pago':'Por cobrar'} ${badge}</span>
       <span style="font-weight:700;font-size:15px;color:var(--success)">${fmtMoney(total)}</span>
     </div>
-    <button class="btn btn-primary btn-full btn-sm" onclick="modalRegistrarPago(${c.id})">💰 Registrar pago</button>`);
-  }).join('');
-
-  const renderSinDeposito=sinDeposito.map(c=>{
-    return renderCard(c,`
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-      <span style="font-size:12px;color:var(--text2)">💵 Efectivo · ${fmtDate(c.cobro?.fechaCobro||c.fecha)}</span>
-      <span style="font-weight:700;font-size:15px;color:var(--success)">${fmtMoney(c.cobro?.monto||0)}</span>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
-      <button class="btn btn-success btn-sm" onclick="modalDepositar(${c.id})">🏦 Depositar</button>
-      <button class="btn btn-ghost btn-sm" onclick="modalCerrarSinDepositar(${c.id})">✗ Sin depositar</button>
+    ${antLine}
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <button class="btn btn-success btn-sm" style="flex:1" onclick="modalRegistrarPago(${c.id})">💰 Registrar pago</button>
+      ${btnFact}
+      <button class="btn btn-ghost btn-xs" onclick="abrirPDF_OS(${c.id})">📝 Orden</button>
     </div>`);
   }).join('');
 
   const renderPorFacturar=porFacturar.map(c=>{
-    const cli=getCliente(c.clienteId);
+    const total=cobroTotal(c);
+    const pgs=c.cobro?.pagos||[];const forma=(pgs.length?pgs[pgs.length-1].forma:c.cobro?.formaPago)||'';
     return renderCard(c,`
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-      <span style="font-size:12px;color:var(--text2)">${c.cobro?.formaPago==='transferencia'?'💳 Transferencia':'🏦 Depositado'}</span>
-      <span style="font-weight:700;font-size:15px;color:var(--success)">${fmtMoney(c.cobro?.monto||0)}</span>
+      <span style="font-size:12px;color:var(--text2)">✅ Pagada${forma?' · '+forma:''}</span>
+      <span style="font-weight:700;font-size:15px;color:var(--success)">${fmtMoney(total)}</span>
     </div>
     <div style="display:flex;gap:6px;flex-wrap:wrap">
-      <button class="btn btn-ghost btn-xs" onclick="abrirPDF_OS(${c.id})">📝 Orden</button>
+      <button class="btn btn-success btn-sm" style="flex:1" onclick="modalFacturar(${c.id})">🧾 Emitir factura</button>
       <button class="btn btn-ghost btn-xs" onclick="abrirPDF_CP(${c.id})">🧾 Comprobante</button>
-      <button class="btn btn-ghost btn-xs" onclick="tpVistaPrevia(tpGenerarOS(${c.id}),'Orden de Servicio',()=>tpImprimirOS(${c.id}))">🖨️ Imprimir</button>
       <button class="btn btn-wa btn-xs" onclick="enviarComprobantePorWA(${c.id})">💬 WA</button>
-      <button class="btn btn-success btn-xs" onclick="modalFacturar(${c.id})">✓ Facturado</button>
+      <button class="btn btn-ghost btn-xs" style="color:var(--text3)" onclick="cerrarSinFactura(${c.id})">Archivar s/factura</button>
     </div>`);
   }).join('');
 
@@ -971,7 +1070,7 @@ async function renderInicio(){
   <div class="stats-grid">
     <div class="stat-card"><div class="stat-num">${state.clientes.length}</div><div class="stat-label">Clientes</div></div>
     <div class="stat-card"><div class="stat-num">${state.clientes.reduce((s,c)=>s+c.pianos.length,0)}</div><div class="stat-label">Pianos</div></div>
-    <div class="stat-card"><div class="stat-num">${state.citas.filter(c=>c.estado==='facturado').length}</div><div class="stat-label">Facturados</div></div>
+    <div class="stat-card"><div class="stat-num">${state.citas.filter(c=>estaFacturada(c)).length}</div><div class="stat-label">Facturados</div></div>
     <div class="stat-card"><div class="stat-num">${Math.round(state.kmTotal)}<span style="font-size:13px"> km</span></div><div class="stat-label">Recorridos</div></div>
   </div>
 
@@ -981,19 +1080,11 @@ async function renderInicio(){
 
   ${pausados.length?`<div class="sec" style="color:#6b7280">⏸ Pausados (${pausados.length})</div>${renderPausados}`:''}
 
-  ${sinCobro.length?`<div class="sec" style="color:var(--primary)">✅ Cerrados sin cobro (${sinCobro.length})</div>${renderSinCobro}`:''}
-
-  ${sinDeposito.length?`
+  ${porCobrar.length?`
   <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px 7px">
-    <div class="sec" style="padding:0;color:#7c3aed">💵 Pendiente de depósito (${sinDeposito.length})</div>
-    <span style="font-weight:700;font-size:13px;color:#7c3aed">${fmtMoney(totalEfectivo)}</span>
-  </div>${renderSinDeposito}`:''}
-
-  ${porFacturar.length?`
-  <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px 7px">
-    <div class="sec" style="padding:0;color:var(--success)">💰 Por facturar hoy (${porFacturar.length})</div>
-    <span style="font-weight:700;font-size:13px;color:var(--success)">${fmtMoney(totalFacturar)}</span>
-  </div>${renderPorFacturar}`:''}
+    <div class="sec" style="padding:0;color:var(--danger)">💰 Por cobrar (${porCobrar.length})</div>
+    <span style="font-weight:700;font-size:13px;color:var(--danger)">${fmtMoney(totalPorCobrar)}</span>
+  </div>${renderPorCobrar}`:''}
 
   <div style="display:flex;align-items:center;justify-content:space-between;padding:0 16px 7px">
     <div class="sec" style="padding:14px 0 0">📅 Próximos servicios</div>
@@ -1012,13 +1103,13 @@ async function renderInicio(){
 
   ${vencidos.length?`<div class="sec">🔴 Citas vencidas</div>
   ${vencidos.map(c=>{const cli=getCliente(c.clienteId);
-    return`<div class="event-item event-red" onclick="showModalDetalleCita(${c.id})">
-      <div style="flex:1">
+    return`<div class="event-item event-red" style="align-items:center">
+      <div style="flex:1;cursor:pointer" onclick="showModalDetalleCita(${c.id})">
         <div style="font-weight:600;font-size:14px">${cli?cli.nombre:'?'}</div>
         <div style="font-size:12px;color:var(--text2)">${c.servicio}</div>
         <div style="font-size:12px;color:var(--danger);margin-top:2px">Venció ${fmtDate(c.fecha)}</div>
       </div>
-      <span class="tag tag-red">Vencida</span>
+      <button class="btn btn-outline btn-xs" style="flex-shrink:0" onclick="event.stopPropagation();reagendarDesdeDetalle(${c.id})">📅 Reagendar</button>
     </div>`;}).join('')}`:''}`;
 
   fetchWeather().then(w=>{
@@ -1032,13 +1123,6 @@ async function renderInicio(){
 }
 
 // ══ SESIÓN / KM ══
-function iniciarServicio(citaId){
-  showToast('Obteniendo posición GPS…');
-  capturarGPS(
-    (lat,lon)=>{state.sesionActiva={citaId,inicio:Date.now(),latInicio:lat,lonInicio:lon};saveState();closeModal();showToast('Servicio iniciado ✓ GPS registrado');renderInicio();},
-    msg=>{state.sesionActiva={citaId,inicio:Date.now(),latInicio:null,lonInicio:null};saveState();closeModal();showToast('Servicio iniciado (sin GPS: '+msg+')');renderInicio();}
-  );
-}
 function cancelarSesion(){
   if(!confirm('¿Cancelar el servicio en curso? No se registrarán km.'))return;
   state.sesionActiva=null;saveState();showToast('Sesión cancelada');renderInicio();
@@ -1176,6 +1260,9 @@ function showModalCliente(id){
 function eliminarCliente(id){
   const c=getCliente(id);if(!c)return;
   if(!confirm(`¿Eliminar a "${c.nombre}" y todos sus datos? Esta acción es irreversible.`))return;
+  tombstone('clientes',id);
+  state.citas.filter(x=>x.clienteId===id).forEach(x=>tombstone('citas',x.id));
+  state.presupuestos.filter(x=>x.clienteId===id).forEach(x=>tombstone('presupuestos',x.id));
   state.clientes=state.clientes.filter(x=>x.id!==id);
   state.citas=state.citas.filter(x=>x.clienteId!==id);
   state.presupuestos=state.presupuestos.filter(x=>x.clienteId!==id);
@@ -1240,6 +1327,7 @@ function showModalEditarCliente(id){
     <div class="input-group"><label class="input-label">C.P.</label><input class="input" id="ec-cp" value="${c.cp||''}" spellcheck="false" maxlength="5" type="tel"></div>
   </div>
   <div class="input-group"><label class="input-label">Razón Social</label><input class="input" id="ec-rs" value="${c.razonSocial||''}" spellcheck="true" placeholder="Para facturas"></div>
+  <div class="input-group"><label class="input-label">Tipo de cliente</label><select class="input" id="ec-tipo"><option value="particular"${(c.tipoCliente||'particular')==='particular'?' selected':''}>Particular</option><option value="empresarial"${c.tipoCliente==='empresarial'?' selected':''}>Empresarial (gobierno, empresa, teatro)</option></select></div>
   <div class="input-group"><label class="input-label">Notas</label><textarea class="input" id="ec-no" spellcheck="true">${c.notas||''}</textarea></div>
   <div class="gps-card">
     <div style="font-weight:700;font-size:14px">📍 Coordenadas GPS</div>
@@ -1258,6 +1346,7 @@ function guardarCliente(id){
   c.rfc=(document.getElementById('ec-rfc').value||'').trim().toUpperCase();
   c.cp=(document.getElementById('ec-cp').value||'').trim();
   c.razonSocial=(document.getElementById('ec-rs').value||'').trim();
+  c.tipoCliente=(document.getElementById('ec-tipo')&&document.getElementById('ec-tipo').value)||c.tipoCliente||'particular';
   saveState();closeModal();showToast('Datos actualizados ✓');renderScreen(currentScreen);
 }
 
@@ -1352,6 +1441,7 @@ function showModalNuevoCliente(retPresup){
     <div class="input-group"><label class="input-label">C.P.</label><input class="input" id="nc-cp" type="tel" maxlength="5" spellcheck="false"></div>
   </div>
   <div class="input-group"><label class="input-label">Razón Social</label><input class="input" id="nc-rs" spellcheck="true" placeholder="Para facturas (opcional)"></div>
+  <div class="input-group"><label class="input-label">Tipo de cliente</label><select class="input" id="nc-tipo"><option value="particular">Particular</option><option value="empresarial">Empresarial (gobierno, empresa, teatro)</option></select></div>
   <div class="input-group"><label class="input-label">Notas</label><textarea class="input" id="nc-no" rows="2" spellcheck="true"></textarea></div>
   <div class="gps-card">
     <div style="font-weight:700;font-size:14px">📍 Ubicación GPS</div>
@@ -1381,6 +1471,7 @@ function crearCliente(retPresup=false){
     rfc:(document.getElementById('nc-rfc').value||'').trim().toUpperCase(),
     cp:(document.getElementById('nc-cp').value||'').trim(),
     razonSocial:(document.getElementById('nc-rs').value||'').trim(),
+    tipoCliente:(document.getElementById('nc-tipo')&&document.getElementById('nc-tipo').value)||'particular',
     lat:ncGPS.lat,lon:ncGPS.lon,pianos:[piano]};
   state.clientes.push(c);saveState();closeModal();showToast('Cliente creado ✓');
   if(retPresup){
@@ -1449,6 +1540,7 @@ function guardarPiano(cId,pId){
 function eliminarPiano(cId,pId){
   const c=getCliente(cId);const p=getPiano(cId,pId);if(!c||!p)return;
   if(!confirm(`¿Eliminar "${p.marca} ${p.modelo}" de ${c.nombre}? Se borrarán también sus citas y fotos.`))return;
+  state.citas.filter(x=>x.clienteId===cId&&x.pianoId===pId).forEach(x=>tombstone('citas',x.id));
   c.pianos=c.pianos.filter(x=>x.id!==pId);
   state.citas=state.citas.filter(x=>!(x.clienteId===cId&&x.pianoId===pId));
   saveState();closeModal();showToast('Instrumento eliminado');showModalCliente(cId);
@@ -1481,7 +1573,7 @@ function renderCalMensual(){
     const chips=citas.slice(0,3).map(ci=>{
       const cli2=getCliente(ci.clienteId);
       const col2=citaColor(ci);
-      const bg=col2==='green'?'var(--success)':col2==='blue'?'var(--primary)':col2==='red'?'var(--danger)':'var(--text3)';
+      const bg=col2==='green'?'var(--success)':col2==='blue'?'var(--primary)':col2==='red'?'var(--danger)':col2==='yellow'?'var(--warning)':'var(--text3)';
       const nm=(cli2?cli2.nombre:'?').split(' ')[0];
       return `<div class="cal-day-chip" style="background:${bg};color:#fff" onclick="event.stopPropagation();showModalDetalleCita(${ci.id})">${ci.hora} ${nm}</div>`;
     }).join('');
@@ -1504,7 +1596,7 @@ function renderEventListMes(y,m){
     return`<div class="event-item event-${col}" onclick="showModalDetalleCita(${c.id})">
       <div style="flex:1"><div style="font-weight:600;font-size:14px">${cli?cli.nombre:'?'}</div>
       <div style="font-size:12px;color:var(--text2)">${c.servicio} · ${c.hora}</div></div>
-      <span class="tag tag-${col==='green'?'green':col==='blue'?'blue':col==='red'?'red':'gray'}">${c.estado}</span>
+      <span class="tag tag-${col}">${etiquetaCita(c)}</span>
     </div>`;}).join('');
 }
 function renderCalSemanal(){
@@ -1540,7 +1632,7 @@ function showModalDia(iso){
       return`<div class="event-item event-${col}" onclick="closeModal();showModalDetalleCita(${c.id})" style="border-radius:8px;margin-bottom:6px">
         <div style="flex:1"><div style="font-weight:600">${cli?cli.nombre:'?'}</div>
         <div style="font-size:12px;color:var(--text2)">${c.servicio} · ${c.hora}</div></div>
-        <span class="tag tag-${col==='green'?'green':col==='blue'?'blue':'red'}">${c.estado}</span>
+        <span class="tag tag-${col}">${etiquetaCita(c)}</span>
       </div>`;}).join('')}
   <button class="btn btn-primary btn-full" style="margin-top:10px" onclick="closeModal();showModalNuevaCita('${iso}')">+ Nueva cita este día</button>`);
 }
@@ -1559,7 +1651,30 @@ function showModalDetalleCita(id){
         <button class="btn btn-ghost btn-sm" onclick="capturarGPSClienteInline(${c.clienteId})">📍 Capturar GPS</button>
       </div>`;
   const actionButtons=()=>{
-    if(['facturado','cancelado','cobrado_efectivo','cobrado_transferencia','depositado','por_facturar','cerrado_sin_cobro'].includes(c.estado)) return '';
+    const op=opEstado(c);
+    if(op==='cancelada') return '';
+    if(op==='realizada'){
+      const total=cobroTotal(c),pagado=montoPagado(c),saldo=saldoCita(c),fact=estaFacturada(c);
+      const cli2=getCliente(c.clienteId);const esEmp=cli2&&cli2.tipoCliente==='empresarial';
+      let html='';
+      if(saldo>0){
+        const lbl=pagado>0?'💰 Abonar / completar pago':'💰 Registrar pago';
+        html+=`<button class="btn btn-success btn-full" onclick="modalRegistrarPago(${id})">${lbl}</button>`;
+        if(!fact)html+=`<button class="btn ${esEmp?'btn-primary':'btn-ghost'} btn-full" style="margin-top:6px" onclick="modalFacturar(${id})">🧾 Emitir factura</button>`;
+        html+=`<button class="btn btn-ghost btn-full" style="margin-top:6px" onclick="abrirPDF_OS(${id})">📝 Orden de servicio</button>`;
+      }else{
+        if(!fact){
+          html+=`<button class="btn btn-success btn-full" onclick="modalFacturar(${id})">🧾 Emitir factura</button>`;
+          html+=`<button class="btn btn-outline btn-full" style="margin-top:6px" onclick="abrirPDF_CP(${id})">🧾 Comprobante</button>`;
+          html+=`<button class="btn btn-wa btn-full" style="margin-top:6px" onclick="enviarComprobantePorWA(${id})">💬 Enviar comprobante WA</button>`;
+          html+=`<button class="btn btn-ghost btn-full" style="margin-top:6px;color:var(--text3)" onclick="cerrarSinFactura(${id})">Archivar sin factura</button>`;
+        }else{
+          html+=`<button class="btn btn-outline btn-full" onclick="abrirPDF_CP(${id})">🧾 Comprobante</button>`;
+          html+=`<button class="btn btn-wa btn-full" style="margin-top:6px" onclick="enviarComprobantePorWA(${id})">💬 Enviar comprobante WA</button>`;
+        }
+      }
+      return html;
+    }
     if(isSes) return `
       <button class="btn btn-success btn-full" onclick="terminarServicio()">✓ Finalizar y registrar km</button>
       <button class="btn btn-danger btn-full" style="margin-top:6px" onclick="cancelarSesion()">✕ Cancelar servicio en curso</button>
@@ -1568,6 +1683,7 @@ function showModalDetalleCita(id){
       <button class="btn btn-success btn-full" onclick="iniciarServicio(${id})">🔧 Iniciar servicio (GPS)</button>
       <button class="btn btn-ghost btn-full" style="margin-top:6px" onclick="marcarRealizado(${id})">✓ Marcar realizado sin GPS</button>
       <button class="btn btn-outline btn-full" style="margin-top:6px" onclick="reagendarDesdeDetalle(${id})">📅 Reagendar / Cambiar fecha</button>
+      <button class="btn btn-success btn-full" style="margin-top:6px" onclick="modalRegistrarPago(${id})">💰 Anticipo / Pago previo</button>
       <button class="btn btn-danger btn-full" style="margin-top:6px" onclick="cancelarCita(${id})">✕ Cancelar cita</button>`;
   };
   openModal(`
@@ -1585,7 +1701,7 @@ function showModalDetalleCita(id){
       <div><span style="color:var(--text2)">Duración</span><br><b>${durH}h</b></div>
       <div><span style="color:var(--text2)">GPS</span><br><b style="font-size:11px;color:${hasGPS?'var(--success)':'var(--danger)'}">${hasGPS?'✓ Guardado':'Sin coords'}</b></div>
     </div>
-    <div style="margin-top:8px"><span class="tag tag-${col==='green'?'green':col==='blue'?'blue':col==='red'?'red':'gray'}">${c.estado}</span></div>
+    <div style="margin-top:8px"><span class="tag tag-${col}">${etiquetaCita(c)}</span></div>
   </div>
   ${gpsRow}
   ${actionButtons()}
@@ -1612,7 +1728,7 @@ function guardarReprogramar(id){
 function reprogramarCita(id){reagendarDesdeDetalle(id);}
 
 function marcarRealizado(id){
-  state.citas.find(x=>x.id===id).estado='realizado';saveState();closeModal();showToast('Cita realizada ✓');renderScreen(currentScreen);
+  state.citas.find(x=>x.id===id).estado='realizada';saveState();closeModal();showToast('Cita realizada ✓');renderScreen(currentScreen);
   setTimeout(()=>{const c=state.citas.find(x=>x.id===id);const cli=getCliente(c.clienteId);
     openModal(`<div class="modal-title">¿Agendar próxima?</div>
     <p style="font-size:14px;color:var(--text2);margin-bottom:14px">¿Cuándo agendamos para <b>${cli?cli.nombre:'este cliente'}</b>?</p>
@@ -1625,7 +1741,7 @@ function agendarProxima(citaId,meses){
   state.citas.push({id:nextId(),clienteId:orig.clienteId,pianoId:orig.pianoId,fecha:nf.toISOString().split('T')[0],hora:orig.hora,estado:'pendiente',servicio:orig.servicio,duracionH:orig.duracionH||1.5,precio:orig.precio});
   saveState();closeModal();showToast(`Nueva cita en ${meses} meses ✓`);renderScreen(currentScreen);
 }
-function cancelarCita(id){if(!confirm('¿Cancelar esta cita?'))return;state.citas.find(x=>x.id===id).estado='cancelado';saveState();closeModal();showToast('Cita cancelada');renderScreen(currentScreen);}
+function cancelarCita(id){if(!confirm('¿Cancelar esta cita?'))return;state.citas.find(x=>x.id===id).estado='cancelada';saveState();closeModal();showToast('Cita cancelada');renderScreen(currentScreen);}
 
 // ══ MODAL: NUEVA CITA ══
 
@@ -1962,7 +2078,7 @@ function guardarServicio(id){const s=state.servicios.find(x=>x.id===id);
   s.duracion=Math.round((Number(document.getElementById('es-d').value)||1)*60);s.descripcion=document.getElementById('es-dc').value.trim();
   s.categoria=document.getElementById('es-cat').value;s.subtipo=document.getElementById('es-sub').value;
   saveState();closeModal();showToast('Actualizado ✓');renderServicios();}
-function eliminarServicio(id){if(!confirm('¿Eliminar?'))return;state.servicios=state.servicios.filter(x=>x.id!==id);saveState();renderServicios();}
+function eliminarServicio(id){if(!confirm('¿Eliminar?'))return;tombstone('servicios',id);state.servicios=state.servicios.filter(x=>x.id!==id);saveState();renderServicios();}
 
 const CATALOGO_INICIAL_PRODUCTOS = [{"clave": "PIA-001", "nombre": "Piano Lifter Escorpion", "categoria": "Accesorios", "marca": "Pianos & Pianos", "modelo": "", "precioCompra": 0, "precio": 30000, "stock": 0, "stockMinimo": 0, "proveedor": "Pianos & Pianos", "notas": ""}, {"clave": "COR-002", "nombre": "Correas para transporte", "categoria": "Accesorios", "marca": "Pianos & Pianos", "modelo": "", "precioCompra": 0, "precio": 1500, "stock": 0, "stockMinimo": 0, "proveedor": "Pianos & Pianos", "notas": ""}, {"clave": "PIA-003", "nombre": "Piano tilter", "categoria": "Accesorios", "marca": "Pianos & Pianos", "modelo": "", "precioCompra": 0, "precio": 15000, "stock": 0, "stockMinimo": 0, "proveedor": "Pianos & Pianos", "notas": ""}, {"clave": "CUE-004", "nombre": "Cuerda de acero Vertical C3 a C4", "categoria": "Cuerdas", "marca": "Roslau", "modelo": "", "precioCompra": 0, "precio": 150, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": "Para vertical"}, {"clave": "CUE-005", "nombre": "Cuerda de acero Vertical C4 a C5", "categoria": "Cuerdas", "marca": "Roslau", "modelo": "", "precioCompra": 0, "precio": 120, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": "Para vertical"}, {"clave": "CUE-006", "nombre": "Cuerda de acero Vertical C5 a C6", "categoria": "Cuerdas", "marca": "Roslau", "modelo": "", "precioCompra": 0, "precio": 100, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": "Para vertical"}, {"clave": "CUE-007", "nombre": "Cuerda de acero Vertical C6 a C7", "categoria": "Cuerdas", "marca": "Roslau", "modelo": "", "precioCompra": 0, "precio": 80, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": "Para vertical"}, {"clave": "CUE-008", "nombre": "Cuerda de acero Vertical C7 a C8", "categoria": "Cuerdas", "marca": "Roslau", "modelo": "", "precioCompra": 0, "precio": 50, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": "Para vertical"}, {"clave": "CUE-009", "nombre": "Cuerda de acero Cola C3 a C4", "categoria": "Cuerdas", "marca": "Roslau", "modelo": "", "precioCompra": 0, "precio": 200, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": "Para Cola"}, {"clave": "CUE-010", "nombre": "Cuerda de acero Cola C4 a C5", "categoria": "Cuerdas", "marca": "Roslau", "modelo": "", "precioCompra": 0, "precio": 180, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": "Para Cola"}, {"clave": "CUE-011", "nombre": "Cuerda de acero Cola C5 a C6", "categoria": "Cuerdas", "marca": "Roslau", "modelo": "", "precioCompra": 0, "precio": 150, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": "Para Cola"}, {"clave": "CUE-012", "nombre": "Cuerda de acero Cola C6 a C7", "categoria": "Cuerdas", "marca": "Roslau", "modelo": "", "precioCompra": 0, "precio": 120, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": "Para Cola"}, {"clave": "CUE-013", "nombre": "Cuerda de acero Cola C7 a C8", "categoria": "Cuerdas", "marca": "Roslau", "modelo": "", "precioCompra": 0, "precio": 80, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": "Para Cola"}, {"clave": "ALM-014", "nombre": "Almohadillas para damp chaser pad", "categoria": "Damp Chaser", "marca": "Damp Chaser", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "BAR-015", "nombre": "Barra deshumidificadora de 15w 18\"", "categoria": "Damp Chaser", "marca": "Damp Chaser", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "BAR-016", "nombre": "Barra deshumidificadora de 25w 24\"", "categoria": "Damp Chaser", "marca": "Damp Chaser", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "BAR-017", "nombre": "Barra deshumidificadora de 50w 48\"", "categoria": "Damp Chaser", "marca": "Damp Chaser", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "HUM-018", "nombre": "Humidificador Pianos Life Saver", "categoria": "Damp Chaser", "marca": "Damp Chaser", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "HUM-019", "nombre": "Humidistat", "categoria": "Damp Chaser", "marca": "Damp Chaser", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": ""}, {"clave": "LIQ-020", "nombre": "Liquido de tratamiento para el agua de damp chaser", "categoria": "Damp Chaser", "marca": "Damp Chaser", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "PIA-021", "nombre": "Piano Life Saver System 4 Partes", "categoria": "Damp Chaser", "marca": "Damp Chaser", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "SIS-022", "nombre": "Sistema de deshumidificacion Damp Chaser 3 partes", "categoria": "Damp Chaser", "marca": "Damp Chaser", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "SIS-023", "nombre": "Sistema de deshumidificacion Damp Chaser 4 partes", "categoria": "Damp Chaser", "marca": "Damp Chaser", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "TRA-024", "nombre": "Tratamiento de agua para sistema dampp chaser", "categoria": "Damp Chaser", "marca": "Damp Chaser", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "TUB-025", "nombre": "Tubo irrigador para Damp chaser", "categoria": "Damp Chaser", "marca": "Damp Chaser", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "ACT-026", "nombre": "Action cloth grosor 1", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "ACT-027", "nombre": "Action cloth grosor 2", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "ACT-028", "nombre": "Action cloth grosor 3", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "ACT-029", "nombre": "Action cloth grosor 4", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "ACT-030", "nombre": "Action cloth grosor 5", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "ACT-031", "nombre": "Action cloth grosor 6", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "FIE-032", "nombre": "Fieltro de descanso de martinetes", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "FIE-033", "nombre": "Fieltro de sordina", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "FIE-034", "nombre": "Fieltro de teclado Tamaño 1", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "FIE-035", "nombre": "Fieltro de teclado Tamaño 2", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "FIE-036", "nombre": "Fieltro de teclado Tamaño 3", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "FIE-037", "nombre": "Fieltro de teclado Tamaño 4", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "FIE-038", "nombre": "Fieltro de teclado Tamaño 5", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "FIE-039", "nombre": "Fieltro para apagadores", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "FIE-040", "nombre": "Fieltros para teclado", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "GAM-041", "nombre": "Gamusa para backcheck", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "GAM-042", "nombre": "Gamuza de atrape", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "GAM-043", "nombre": "Gamuza para atril", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "GAM-044", "nombre": "Gamuza para nuez", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "PAÑ-045", "nombre": "Paño de lana protector de cuerdas", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "SOR-046", "nombre": "Sordina", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "TIR-047", "nombre": "Tira de fieltro", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "PAÑ-048", "nombre": "Paño de microfibra para limpieza", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 100, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "ACE-049", "nombre": "Acetona", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 120, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "EST-050", "nombre": "Estopa", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 100, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "TRA-051", "nombre": "Trapo Sontara azul", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 20, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "POL-052", "nombre": "Poliuretano negro", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 800, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "POL-053", "nombre": "Poliuretano transparente", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 800, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "PIR-054", "nombre": "Pirmer 1k", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 400, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "RED-055", "nombre": "Reductor Primer 1k", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 300, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "PRI-056", "nombre": "Primer 2K", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 800, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "RED-057", "nombre": "Reductor Primer 2k", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 300, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "CAT-058", "nombre": "Catalizador iniversal", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 300, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "RED-059", "nombre": "Reductor poliuretano", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "BAS-060", "nombre": "Base color", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "RED-061", "nombre": "Reductor base color", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "RES-062", "nombre": "Resanador poliester", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "RES-063", "nombre": "Resanador spot putty", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "FON-064", "nombre": "Fondo poliuretano", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "RED-065", "nombre": "Reductor fondo poliuretano", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "POL-066", "nombre": "Poliuretano base agua", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "FON-067", "nombre": "Fondo poliester", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "BAR-068", "nombre": "Barniz poliester negro", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "BAR-069", "nombre": "Barniz poliester transparente", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "ACE-070", "nombre": "Acelerador poliester", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "CAT-071", "nombre": "Catalizador poliester", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "LIJ-072", "nombre": "Lija garlopa 16\" all grit", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "LIJ-073", "nombre": "Lija cubitron 5\"", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "LIJ-074", "nombre": "Lija cubitron 6\"", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "LIJ-075", "nombre": "Lija fandelli 5\"", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "LIJ-076", "nombre": "Lija fandelli 6\"", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "LIJ-077", "nombre": "Lija hoja 80 - 380", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "LIJ-078", "nombre": "Lija hoja 400-800", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "LIJ-079", "nombre": "Lija hoja 1000-3000", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "LIJ-080", "nombre": "Lija media hoja 3500", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "PUL-081", "nombre": "Pulimeto Norton", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "PUL-082", "nombre": "Pulimento 3m 1", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "PUL-083", "nombre": "Pulimento 3m 2", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "PUL-084", "nombre": "Pulimento 3m 3", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "PUL-085", "nombre": "Pulimento menzerna 3in1", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "BOR-086", "nombre": "Borla hule espuma 6\"", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "BOR-087", "nombre": "Borla Huro 6\"", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "BOR-088", "nombre": "Borla lana 7\"", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "BOR-089", "nombre": "Borla espuma 7\"", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "BIS-090", "nombre": "Bisagra para caida lenta de piano de cola yamaha", "categoria": "Partes Yamaha", "marca": "Yamaha", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "Yamaha Mexico", "notas": ""}, {"clave": "CAS-091", "nombre": "CASTER(S) GB1, GC1, GC2 PF", "categoria": "Partes Yamaha", "marca": "Yamaha", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "Yamaha Mexico", "notas": ""}, {"clave": "CAS-092", "nombre": "Casters Yamaha GB1", "categoria": "Partes Yamaha", "marca": "Yamaha", "modelo": "GB1", "precioCompra": 0, "precio": 7128, "stock": 0, "stockMinimo": 0, "proveedor": "Yamaha Mexico", "notas": ""}, {"clave": "CEN-093", "nombre": "CENTER PIN ASSY., 0.25 (GH1B, GH2)", "categoria": "Partes Yamaha", "marca": "Yamaha", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "Yamaha Mexico", "notas": ""}, {"clave": "CLA-094", "nombre": "Clavijas Yamaha de 60mm", "categoria": "Partes Yamaha", "marca": "Yamaha", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "Yamaha Mexico", "notas": ""}, {"clave": "CLO-095", "nombre": "CLOTH, BUSHING 1.0 T", "categoria": "Partes Yamaha", "marca": "Yamaha", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "Yamaha Mexico", "notas": ""}, {"clave": "CUB-096", "nombre": "Cubre teclado yamaha", "categoria": "Partes Yamaha", "marca": "Yamaha", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "Yamaha Mexico", "notas": ""}, {"clave": "FIE-097", "nombre": "Fieltro apagador yamaha U1/U3", "categoria": "Partes Yamaha", "marca": "Yamaha", "modelo": "U1/U3", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "Yamaha Mexico", "notas": ""}, {"clave": "LEG-098", "nombre": "LEG SOCKET GH1B GH2", "categoria": "Partes Yamaha", "marca": "Yamaha", "modelo": "GH1B GH2", "precioCompra": 0, "precio": 2075, "stock": 0, "stockMinimo": 0, "proveedor": "Yamaha Mexico", "notas": ""}, {"clave": "MAR-099", "nombre": "Martinetes para yamaha", "categoria": "Partes Yamaha", "marca": "Yamaha", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "Yamaha Mexico", "notas": ""}, {"clave": "PLA-100", "nombre": "Placa con logo yamaha", "categoria": "Partes Yamaha", "marca": "Yamaha", "modelo": "", "precioCompra": 0, "precio": 500, "stock": 0, "stockMinimo": 0, "proveedor": "Yamaha Mexico", "notas": ""}, {"clave": "TOP-101", "nombre": "TOP BOARD SECTIONAL HINGE L=1418", "categoria": "Partes Yamaha", "marca": "Yamaha", "modelo": "", "precioCompra": 0, "precio": 2028, "stock": 0, "stockMinimo": 0, "proveedor": "Yamaha Mexico", "notas": ""}, {"clave": "TRU-102", "nombre": "TRUSS HEAD WOOD SCREW 3.0X12 6PCS. BRASS", "categoria": "Partes Yamaha", "marca": "Yamaha", "modelo": "", "precioCompra": 624.66, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "Yamaha Mexico", "notas": ""}, {"clave": "BIS-103", "nombre": "Bisagra superior de tapa de piano de cola de 1.50 mts", "categoria": "Refacciones", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "CER-104", "nombre": "Cerradura para piano de bronce con llave", "categoria": "Refacciones", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "CLA-105", "nombre": "Clavijas de afinacion alemanas diamantadas", "categoria": "Refacciones", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "CLA-106", "nombre": "Clavijas Diamond", "categoria": "Refacciones", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "EJE-107", "nombre": "Ejes de bronce", "categoria": "Refacciones", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "HIL-108", "nombre": "Hilo de seda para martinetes", "categoria": "Refacciones", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "JUE-109", "nombre": "Juego de martinetes Abel", "categoria": "Refacciones", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "JUE-110", "nombre": "Juego de martinetes Genericos", "categoria": "Refacciones", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "JUE-111", "nombre": "Juego de martinetes Imadawa", "categoria": "Refacciones", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "JUE-112", "nombre": "Juego de martinetes Renner", "categoria": "Refacciones", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "LLA-113", "nombre": "Llave para chapa de piano", "categoria": "Refacciones", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "PEG-114", "nombre": "Pegamento", "categoria": "Refacciones", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "PER-115", "nombre": "Perno de bronce bisagra de tapa de piano", "categoria": "Refacciones", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 50, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "RES-116", "nombre": "Resortes de apagador inferior", "categoria": "Refacciones", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "RES-117", "nombre": "Resortes de apagador superior", "categoria": "Refacciones", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "RES-118", "nombre": "Resortes de martinetes", "categoria": "Refacciones", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "ROD-119", "nombre": "Rodajas sencillas de latón para piano", "categoria": "Refacciones", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "TIR-120", "nombre": "Tira de fieltro grueso", "categoria": "Refacciones", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "TOR-121", "nombre": "Tornillos para bisagras", "categoria": "Refacciones", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "TIR-122", "nombre": "Tiras de contacto Yamaha", "categoria": "Refacciones electrónicos", "marca": "Yamaha", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "Yamaha Mexico", "notas": ""}, {"clave": "FIE-123", "nombre": "Fieltro amortiguador superior de teclas yamaha", "categoria": "Refacciones electrónicos", "marca": "Yamaha", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "Yamaha Mexico", "notas": ""}];
 
@@ -2010,7 +2126,7 @@ function _prodModalFields(v, titulo, saveFn){
   const cats=["Accesorios", "Cuerdas", "Damp Chaser", "Fieltros y Gamuzas", "Materiales de pintura", "Partes Yamaha", "Refacciones", "Refacciones electrónicos"];
   const opts=cats.map(c=>`<option value="${c}" ${(v.categoria||'')==c?'selected':''}>${c}</option>`).join('');
   openModal(`<div class="modal-title">${titulo}</div>
-  <div class="input-group"><label class="input-label">Clave</label><input class="input" id="ep-clave" value="${v.clave||''}"></div>
+  <div class="input-group"><label class="input-label">Clave <span style="font-weight:400;color:var(--text3)">(opcional — se genera sola)</span></label><input class="input" id="ep-clave" value="${v.clave||''}" placeholder="Ej. FIE-041 (vacío = automática)"></div>
   <div class="input-group"><label class="input-label">Nombre *</label><input class="input" id="ep-nombre" value="${v.nombre||''}"></div>
   <div class="input-group"><label class="input-label">Categoría</label>
     <select class="input" id="ep-cat"><option value="">- Sin categoría -</option>${opts}</select>
@@ -2031,6 +2147,23 @@ function _prodModalFields(v, titulo, saveFn){
   <div class="input-group"><label class="input-label">Notas</label><textarea class="input" id="ep-notas" rows="2">${v.notas||''}</textarea></div>
   <button class="btn btn-primary btn-full" onclick="${saveFn}">Guardar</button>`);
 }
+// Autogenera clave de producto: 3 primeras letras del nombre (MAYÚS) + "-" + consecutivo
+// de 3 dígitos por prefijo. Respeta una clave ya capturada. excludeId evita auto-colisión al editar.
+function generarClaveProducto(nombre, excludeId){
+  const base=(nombre||'').trim();
+  if(!base)return '';
+  // Solo letras para el prefijo (ignora espacios/acentos raros), 3 chars
+  const limpio=base.normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-Za-z]/g,'');
+  const pref=(limpio.substring(0,3)||'XXX').toUpperCase().padEnd(3,'X');
+  let max=0;
+  state.productos.forEach(p=>{
+    if(excludeId!=null&&p.id===excludeId)return;
+    if(!p.clave)return;
+    const m=String(p.clave).toUpperCase().match(/^([A-Z]{3})-(\d+)$/);
+    if(m&&m[1]===pref){const n=parseInt(m[2],10);if(n>max)max=n;}
+  });
+  return `${pref}-${String(max+1).padStart(3,'0')}`;
+}
 function _prodRead(){
   return {
     clave:document.getElementById('ep-clave').value.trim(),
@@ -2049,10 +2182,12 @@ function _prodRead(){
 function showModalNuevoProducto(){_prodModalFields({},'Nuevo producto','crearProducto()');}
 function showModalEditarProducto(id){const p=state.productos.find(x=>x.id===id);_prodModalFields(p,'Editar producto',`guardarProducto(${id})`);}
 function crearProducto(){const d=_prodRead();if(!d.nombre){showToast('Nombre obligatorio');return;}
-  state.productos.push({id:nextId(),...d});saveState();closeModal();showToast('Creado ✓');renderProductos();}
+  if(!d.clave)d.clave=generarClaveProducto(d.nombre,null);
+  state.productos.push({id:nextId(),...d});saveState();closeModal();showToast('Creado ✓ · '+d.clave);renderProductos();}
 function guardarProducto(id){const p=state.productos.find(x=>x.id===id);const d=_prodRead();if(!d.nombre){showToast('Nombre obligatorio');return;}
+  if(!d.clave)d.clave=generarClaveProducto(d.nombre,id);
   Object.assign(p,d);saveState();closeModal();showToast('Actualizado ✓');renderProductos();}
-function eliminarProducto(id){if(!confirm('¿Eliminar?'))return;state.productos=state.productos.filter(x=>x.id!==id);saveState();renderProductos();}
+function eliminarProducto(id){if(!confirm('¿Eliminar?'))return;tombstone('productos',id);state.productos=state.productos.filter(x=>x.id!==id);saveState();renderProductos();}
 function importarCatalogoInicial(){
   if(state.productos.length>0){
     if(!confirm('Ya tienes '+state.productos.length+' productos. ¿Agregar el catálogo inicial sin borrar los existentes?'))return;
@@ -2577,7 +2712,7 @@ function enviarAdminWA(id,tipo){
   closeModal();
   window.open(`https://wa.me/52${adminWA.replace(/\D/g,'')}?text=${encodeURIComponent(msg)}`,'_blank');
 }
-function eliminarPresupuesto(id){if(!confirm('¿Eliminar?'))return;state.presupuestos=state.presupuestos.filter(x=>x.id!==id);saveState();renderPresupuesto();}
+function eliminarPresupuesto(id){if(!confirm('¿Eliminar?'))return;tombstone('presupuestos',id);state.presupuestos=state.presupuestos.filter(x=>x.id!==id);saveState();renderPresupuesto();}
 function agendarDesdePresupuesto(id){
   const p=state.presupuestos.find(x=>x.id===id);if(!p)return;
   showModalNuevaCita(null,p.clienteId,p.pianoId,id);
@@ -2653,6 +2788,48 @@ function showMenuWAPresupuesto(presupuestoId){
 
 
 // ══ SCREEN: CONFIG ══
+let _filtH='todos';
+function renderHistorial(){
+  const pills=[
+    {k:'todos',label:'Todos'},
+    {k:'cobrar',label:'Por cobrar'},
+    {k:'facturar',label:'Por facturar'},
+    {k:'cerradas',label:'Cerradas'},
+    {k:'canceladas',label:'Canceladas'},
+  ];
+  let citas=state.citas.filter(c=>opEstado(c)!=='pendiente'&&opEstado(c)!=='vencida').sort((a,b)=>b.fecha.localeCompare(a.fecha));
+  if(_filtH==='cobrar')citas=citas.filter(enPorCobrar);
+  else if(_filtH==='facturar')citas=citas.filter(enPorFacturar);
+  else if(_filtH==='cerradas')citas=citas.filter(citaArchivada);
+  else if(_filtH==='canceladas')citas=citas.filter(c=>opEstado(c)==='cancelada');
+  const totalMostrado=citas.reduce((s,c)=>s+montoPagado(c),0);
+  const lista=citas.length
+    ?citas.map(c=>{
+      const cli=getCliente(c.clienteId);const piano=getPiano(c.clienteId,c.pianoId);
+      const col=citaColor(c);
+      return`<div class="event-item event-${col}" onclick="showModalDetalleCita(${c.id})" style="cursor:pointer">
+        <div style="flex:1">
+          <div style="font-weight:600;font-size:14px">${cli?cli.nombre:'?'}</div>
+          <div style="font-size:12px;color:var(--text2)">${c.servicio}${piano?' · '+pianoLabel(piano):''}</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">${fmtDate(c.fecha)}</div>
+        </div>
+        <div style="text-align:right;flex-shrink:0">
+          <div style="font-weight:700;font-size:13px;color:var(--success)">${fmtMoney(cobroTotal(c))}</div>
+          <span class="tag tag-${col}" style="font-size:10px">${etiquetaCita(c)}</span>
+        </div>
+      </div>`;
+    }).join('')
+    :'<div class="card" style="text-align:center;color:var(--text2);padding:24px 16px;font-size:14px">Sin servicios en este filtro</div>';
+  document.getElementById('screen-historial').innerHTML=`
+  <div class="page-header">
+    <div class="page-title">📋 Historial de servicios</div>
+    <div class="page-sub">${citas.length} servicios · ${fmtMoney(totalMostrado)} cobrado</div>
+  </div>
+  <div class="segment" style="overflow-x:auto;padding:4px 16px 8px;gap:6px">
+    ${pills.map(p=>`<button class="seg-btn${_filtH===p.k?' active':''}" onclick="_filtH='${p.k}';renderHistorial()">${p.label}</button>`).join('')}
+  </div>
+  ${lista}`;
+}
 function renderConfig(){
   const tec=state.tecnico||{};
   const avatarHTML=tec.foto
@@ -2714,7 +2891,10 @@ function renderConfig(){
   </div>
 
   <!-- v2.9.2 — configuración cotizador cuerdas -->
-  <div class="sec">Cotizador de Cuerdas Entorchadas</div>
+  <details style="margin:0 0 2px">
+  <summary style="padding:12px 16px;font-weight:700;font-size:14px;cursor:pointer;list-style:none;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;background:var(--bg)">
+    🎵 Cotizador de Cuerdas Entorchadas <span style="font-size:12px;color:var(--text3)">▶ Expandir</span>
+  </summary>
   <div style="padding:4px 16px 8px;font-size:12px;color:var(--text2)">Anchors (precio High Bass por categoría)</div>
   ${['esp','con','est','pro'].map(id=>{
     const cat=CUE_CATS.vertical.find(c=>c.id===id);
@@ -2741,8 +2921,13 @@ function renderConfig(){
     <input type="number" class="input" style="width:90px;text-align:right" value="${state.cueDescTecnico||15}"
       onchange="state.cueDescTecnico=Number(this.value);saveState()"></div>
 
+  </details>
+
   <!-- v2.9.6 — configuración cotizador fundas -->
-  <div class="sec">Cotizador de Fundas</div>
+  <details style="margin:0 0 2px">
+  <summary style="padding:12px 16px;font-weight:700;font-size:14px;cursor:pointer;list-style:none;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;background:var(--bg)">
+    🎸 Cotizador de Fundas de Piano <span style="font-size:12px;color:var(--text3)">▶ Expandir</span>
+  </summary>
   <div style="padding:4px 16px 6px;font-size:12px;color:var(--text2)">Precios por bracket (con IVA)</div>
   ${getFundaPrecios().map(b=>`
     <div style="padding:6px 16px;border-bottom:1px solid var(--border)">
@@ -2766,6 +2951,12 @@ function renderConfig(){
   <div class="settings-row"><div class="sr-title">👜 Bolsas (3 patas + lira)</div>
     <input type="number" class="input" style="width:90px;text-align:right" value="${getFundaBolsas()}"
       onchange="state.fundaBolsas=Number(this.value);saveState()"></div>
+
+  </details>
+
+  <div style="padding:4px 16px 12px">
+    <button class="btn btn-ghost btn-full" style="border:1.5px solid var(--border)" onclick="navigate('historial')">📋 Ver historial de servicios →</button>
+  </div>
 
   <!-- v2.8.1 — sincronización real vía Apps Script -->
   <div class="sec">Sincronización en la nube</div>
@@ -2794,7 +2985,7 @@ function renderConfig(){
 
   <div class="credits-block">
     <div class="credits-logo">🎹</div>
-    <div class="credits-app">PianoTune Pro v2.9.8</div>
+    <div class="credits-app">PianoTune Pro v2.10.2</div>
     <div class="credits-dev">Desarrollado por Sergio L. Ruiz Jones</div>
     <div class="credits-co">Pianos and Pianos — Mazatlán, Sin.</div>
   </div>`;
@@ -3069,30 +3260,35 @@ function modalCerrarServicio(citaId){
       <option value="18">Cada 18 meses</option>
       <option value="24">Cada 24 meses</option>
     </select></div>
-  <div class="modal-sub">¿Se paga ahora?</div>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
-    <button class="btn btn-success btn-full" onclick="cerrarConPago(${citaId})">💰 Sí, pagar ahora</button>
-    <button class="btn btn-ghost btn-full" onclick="cerrarSinPago(${citaId})">📋 No, pago después</button>
+  <div class="modal-sub">¿Qué sigue?</div>
+  <div style="display:grid;gap:8px;margin-bottom:14px">
+    ${(getCliente(c.clienteId)||{}).tipoCliente==='empresarial'?`
+    <button class="btn btn-primary btn-full" onclick="cerrarServicioConfirm(${citaId},'factura')">🧾 Emitir factura (PUE)</button>
+    <button class="btn btn-ghost btn-full" onclick="cerrarServicioConfirm(${citaId},'pago')">💰 Registrar pago</button>`:`
+    <button class="btn btn-success btn-full" onclick="cerrarServicioConfirm(${citaId},'pago')">💰 Registrar pago</button>
+    <button class="btn btn-ghost btn-full" onclick="cerrarServicioConfirm(${citaId},'factura')">🧾 Emitir factura</button>`}
+    <button class="btn btn-outline btn-full" onclick="cerrarServicioConfirm(${citaId},'despues')">📋 Solo cerrar (después)</button>
   </div>`);
 }
-function cerrarConPago(citaId){
+function cerrarServicioConfirm(citaId,next){
   const ciclo=parseInt(document.getElementById('cs-ciclo')?.value)||0;
   const c=state.citas.find(x=>x.id===citaId);if(!c)return;
   aplicarCierre(c,ciclo);
-  closeModal();
-  setTimeout(()=>modalRegistrarPago(citaId),300);
-}
-function cerrarSinPago(citaId){
-  const ciclo=parseInt(document.getElementById('cs-ciclo')?.value)||0;
-  const c=state.citas.find(x=>x.id===citaId);if(!c)return;
-  aplicarCierre(c,ciclo);
-  c.estado='cerrado_sin_cobro';
-  saveState();closeModal();showToast('Servicio cerrado · Pendiente de cobro');renderInicio();
+  saveState();closeModal();
+  if(next==='pago')setTimeout(()=>modalRegistrarPago(citaId),300);
+  else if(next==='factura')setTimeout(()=>modalFacturar(citaId),300);
+  else{showToast('Servicio realizado ✓ · Por cobrar');renderInicio();}
 }
 function aplicarCierre(c,cicloMeses){
   const hoy=new Date().toISOString().split('T')[0];
   c.ordenServicio.fechaCierre=hoy;
   c.recurrencia={cicloMeses,servicioId:null,fechaSugerida:''};
+  c.estado='realizada';
+  const _items=c.ordenServicio?.items||[];
+  c.cobro=c.cobro||{};
+  c.cobro.total=_items.reduce((s,i)=>s+Number(i.precio||0),0)||c.precio||0;
+  if(!Array.isArray(c.cobro.pagos))c.cobro.pagos=[];
+  if(!c.factura)c.factura={facturado:false,tipoComprobante:'',receptor:'',fecha:'',folio:''};
   // Save recurrencia on piano
   if(cicloMeses>0&&c.pianoId){
     const piano=getPiano(c.clienteId,c.pianoId);
@@ -3105,48 +3301,51 @@ function aplicarCierre(c,cicloMeses){
 // ── Registrar pago ──
 function modalRegistrarPago(citaId){
   const c=state.citas.find(x=>x.id===citaId);if(!c)return;
-  const items=c.ordenServicio?.items||[];
-  const total=items.reduce((s,i)=>s+Number(i.precio),0)||c.precio||0;
+  const total=cobroTotal(c),pagado=montoPagado(c),saldo=saldoCita(c);
   const hoy=new Date().toISOString().split('T')[0];
   openModal(`<div class="modal-title">💰 Registrar pago</div>
-  <div style="font-size:24px;font-weight:700;text-align:center;color:var(--success);padding:10px 0 16px">${fmtMoney(total)}</div>
+  <div class="card" style="margin:0 0 14px;background:var(--bg);font-size:13px">
+    <div style="display:flex;justify-content:space-between"><span>Total servicio</span><b>${fmtMoney(total)}</b></div>
+    ${pagado>0?`<div style="display:flex;justify-content:space-between;color:var(--text2)"><span>Pagado antes</span><b>${fmtMoney(pagado)}</b></div>`:''}
+    <div style="display:flex;justify-content:space-between;color:var(--danger);margin-top:2px"><span>Saldo</span><b>${fmtMoney(saldo)}</b></div>
+  </div>
   <div class="input-group"><label class="input-label">Monto recibido</label>
-    <input type="number" class="input" id="rp-monto" value="${total}" style="font-size:18px;font-weight:700"></div>
+    <input type="number" class="input" id="rp-monto" value="${saldo||total}" style="font-size:18px;font-weight:700"></div>
   <div class="input-group"><label class="input-label">Forma de pago</label>
-    <select class="input select" id="rp-forma" onchange="updFormaPago()">
+    <select class="input select" id="rp-forma">
       <option value="transferencia">💳 Transferencia bancaria</option>
       <option value="efectivo">💵 Efectivo</option>
+      <option value="deposito">🏦 Depósito</option>
       <option value="tarjeta">💳 Tarjeta</option>
     </select></div>
-  <div id="rp-anticipo-row" style="display:none">
-    <div class="input-group"><label class="input-label">Anticipo previo (si hubo)</label>
-      <input type="number" class="input" id="rp-anticipo" value="0"></div>
-  </div>
-  <div class="input-group"><label class="input-label">Fecha de cobro</label>
+  <div class="input-group"><label class="input-label">Fecha de pago</label>
     <input type="date" class="input" id="rp-fecha" value="${hoy}"></div>
-  <div class="input-group"><label class="input-label">Notas</label>
-    <input class="input" id="rp-notas" placeholder="Referencia de transferencia, etc."></div>
-  <div id="rp-aviso" style="padding:10px 12px;background:var(--warning-light);border-radius:8px;font-size:12px;color:var(--warning);margin-bottom:12px;display:none">
-    💵 El efectivo pasará a <b>Pendiente de depósito</b> — no se genera orden de facturación hasta depositar.
-  </div>
+  <div class="input-group"><label class="input-label">Referencia / folio de operación</label>
+    <input class="input" id="rp-ref" placeholder="Ref. transferencia, ticket, etc."></div>
   <button class="btn btn-primary btn-full" onclick="guardarPago(${citaId})">Confirmar pago</button>`);
-}
-function updFormaPago(){
-  const forma=document.getElementById('rp-forma')?.value;
-  const aviso=document.getElementById('rp-aviso');
-  const anticipo=document.getElementById('rp-anticipo-row');
-  if(aviso)aviso.style.display=forma==='efectivo'?'block':'none';
-  if(anticipo)anticipo.style.display='block';
 }
 function guardarPago(citaId){
   const c=state.citas.find(x=>x.id===citaId);if(!c)return;
-  const forma=document.getElementById('rp-forma').value;
   const monto=Number(document.getElementById('rp-monto').value)||0;
-  const anticipo=Number(document.getElementById('rp-anticipo').value)||0;
-  c.cobro={monto,formaPago:forma,fechaCobro:document.getElementById('rp-fecha').value,anticipo,notas:document.getElementById('rp-notas').value.trim()};
-  c.estado=forma==='efectivo'?'cobrado_efectivo':'cobrado_transferencia';
+  if(monto<=0){showToast('Ingresa un monto válido');return;}
+  const forma=document.getElementById('rp-forma').value;
+  const fecha=document.getElementById('rp-fecha').value;
+  const referencia=document.getElementById('rp-ref').value.trim();
+  if(!c.cobro)c.cobro={};
+  if(typeof c.cobro.total!=='number'||!c.cobro.total)c.cobro.total=cobroTotal(c);
+  if(!Array.isArray(c.cobro.pagos))c.cobro.pagos=[];
+  c.cobro.pagos.push({monto,forma,fecha,referencia});
+  c.cobro.monto=montoPagado(c);c.cobro.formaPago=forma;c.cobro.fechaCobro=fecha;
+  // Un pago/anticipo NO completa el servicio. El estado 'realizada' solo lo
+  // establece el cierre (aplicarCierre/marcarRealizado/factura). Una cita
+  // pendiente/vencida/en_curso conserva su estado operativo aunque reciba anticipo.
   saveState();closeModal();
-  showToast(forma==='efectivo'?'Cobrado ✓ · Pendiente de depósito':'Cobrado ✓ · Listo para facturar');
+  const saldo=saldoCita(c);
+  if(opEstado(c)==='realizada'){
+    showToast(saldo>0?`Anticipo ✓ · Saldo ${fmtMoney(saldo)}`:'Pago completo ✓');
+  }else{
+    showToast(`Anticipo registrado ✓ · ${fmtMoney(monto)} · servicio aún por realizar`);
+  }
   renderInicio();
 }
 
@@ -3186,17 +3385,41 @@ function modalCerrarSinDepositar(citaId){
 function modalFacturar(citaId){
   const c=state.citas.find(x=>x.id===citaId);if(!c)return;
   const cli=getCliente(c.clienteId);
-  openModal(`<div class="modal-title">✓ Confirmar facturación</div>
-  <p style="font-size:14px;color:var(--text2);margin-bottom:16px">¿Qué tipo de factura se generó en Aspel?</p>
-  ${cli&&cli.rfc?`<button class="btn btn-primary btn-full" style="margin-bottom:8px" onclick="confirmarFacturado(${citaId},'cliente')">🧾 A nombre de ${cli.nombre}<br><span style="font-size:11px;font-weight:400">RFC: ${cli.rfc}</span></button>`:''}
-  <button class="btn btn-ghost btn-full" style="margin-bottom:8px" onclick="confirmarFacturado(${citaId},'global')">📄 Público en general (global)</button>
-  <button class="btn btn-outline btn-full" onclick="confirmarFacturado(${citaId},'sin_factura')">Sin factura</button>`);
+  const hoy=new Date().toISOString().split('T')[0];
+  const tieneRFC=cli&&cli.rfc;
+  openModal(`<div class="modal-title">🧾 Emitir factura</div>
+  <div class="input-group"><label class="input-label">Receptor</label>
+    <select class="input select" id="fa-receptor">
+      ${tieneRFC?`<option value="cliente">${cli.nombre} — RFC ${cli.rfc}</option>`:''}
+      <option value="publico_general"${tieneRFC?'':' selected'}>Público en general (global)</option>
+    </select></div>
+  <div class="input-group"><label class="input-label">Tipo de comprobante</label>
+    <select class="input select" id="fa-tipo">
+      <option value="PUE">PUE — Pago en una exhibición</option>
+      <option value="PPD">PPD — Pago en parcialidades / diferido</option>
+    </select></div>
+  <div class="input-group"><label class="input-label">Fecha de factura</label>
+    <input type="date" class="input" id="fa-fecha" value="${hoy}"></div>
+  <div class="input-group"><label class="input-label">Folio / UUID (opcional)</label>
+    <input class="input" id="fa-folio" placeholder="Folio de Aspel o UUID"></div>
+  <button class="btn btn-primary btn-full" onclick="confirmarFacturado(${citaId})">✓ Registrar factura</button>`);
 }
-function confirmarFacturado(citaId,tipo){
+function confirmarFacturado(citaId){
   const c=state.citas.find(x=>x.id===citaId);if(!c)return;
-  c.estado='facturado';
-  c.facturaInfo={fechaFacturado:new Date().toISOString().split('T')[0],tipoFactura:tipo};
-  saveState();closeModal();showToast('Facturado ✓ · Enviado a archivo');renderInicio();
+  c.factura={facturado:true,
+    tipoComprobante:document.getElementById('fa-tipo').value,
+    receptor:document.getElementById('fa-receptor').value,
+    fecha:document.getElementById('fa-fecha').value,
+    folio:document.getElementById('fa-folio').value.trim()};
+  c.facturaInfo={fechaFacturado:c.factura.fecha,tipoFactura:c.factura.receptor};
+  if(opEstado(c)!=='realizada')c.estado='realizada';
+  saveState();closeModal();showToast('Factura registrada ✓');renderInicio();
+}
+function cerrarSinFactura(citaId){
+  if(!confirm('¿Cerrar sin emitir factura? Quedará archivada como pagada sin factura.'))return;
+  const c=state.citas.find(x=>x.id===citaId);if(!c)return;
+  c.archivada=true;
+  saveState();showToast('Archivada (sin factura) ✓');renderInicio();
 }
 
 // ── Enviar comprobante por WA ──
@@ -3611,6 +3834,7 @@ function checkAutoPausa(){
       // Show notification to capture hours
       showToast(`⏸ ${activos.length} servicio(s) auto-pausados a las ${pausaHora}:00`,5000);
       setTimeout(()=>{
+        if(_modalAbierto())return; // No interrumpir al usuario en mitad de un formulario
         activos.forEach(c=>{
           openModal(`<div class="modal-title">⏸ Auto-pausa activada</div>
           <p style="font-size:14px;color:var(--text2);margin-bottom:14px">El servicio se pausó automáticamente. ¿Cuántas horas trabajaste hoy?</p>
@@ -3675,6 +3899,7 @@ var DT_NAV=[
   {id:'servicios',label:'Servicios',icon:'<circle cx="12" cy="12" r="3"/><path d="M19.07 4.93l-1.41 1.41M4.93 4.93l1.41 1.41M12 2v2M12 20v2M2 12h2M20 12h2M16.95 16.95l1.41 1.41M4.93 19.07l1.41-1.41"/>'},
   {id:'productos',label:'Productos',icon:'<path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/>'},
   {id:'presupuesto',label:'Presupuestos',icon:'<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>'},
+  {id:'historial',label:'Historial',icon:'<circle cx="12" cy="12" r="10"/><polyline points="12,6 12,12 16,14"/>'},
   {id:'config',  label:'Configuración',icon:'<circle cx="12" cy="12" r="3"/><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58z"/>'},
   {id:'ayuda',   label:'Manual de ayuda', icon:'<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>'},
 ];
@@ -3731,21 +3956,21 @@ function renderInicioDT(){
   const mesActual=new Date().toISOString().slice(0,7);
   const citasMes=state.citas.filter(c=>c.fecha&&c.fecha.startsWith(mesActual));
   const facturadoMes=citasMes
-    .filter(c=>['cobrado_efectivo','cobrado_transferencia','depositado','por_facturar','facturado'].includes(c.estado))
-    .reduce((s,c)=>s+(c.cobro?.monto||c.precio||0),0);
+    .filter(c=>montoPagado(c)>0)
+    .reduce((s,c)=>s+montoPagado(c),0);
 
-  const porCobrar=state.citas
-    .filter(c=>c.estado==='cerrado_sin_cobro')
-    .reduce((s,c)=>s+(c.cobro?.monto||c.precio||0),0);
-  const efectivoSinDepositar=state.citas
-    .filter(c=>c.estado==='cobrado_efectivo')
-    .reduce((s,c)=>s+(c.cobro?.monto||0),0);
-  const enCursoCount=state.citas.filter(c=>c.estado==='en_curso').length;
-  const vencidos=state.citas.filter(c=>c.estado==='vencido');
+  const porCobrarCitas=state.citas.filter(enPorCobrar);
+  const porCobrar=porCobrarCitas.reduce((s,c)=>s+saldoCita(c),0);
+  const porFacturarCitas=state.citas.filter(enPorFacturar);
+  const porFacturarMonto=porFacturarCitas.reduce((s,c)=>s+montoPagado(c),0);
+  const enCursoCitas=state.citas.filter(c=>opEstado(c)==='en_curso'&&!(c.estado==='pausado'||c.pausada));
+  const pausadasCitas=state.citas.filter(c=>opEstado(c)==='en_curso'&&(c.estado==='pausado'||c.pausada));
+  const enCursoCount=enCursoCitas.length+pausadasCitas.length;
+  const vencidos=state.citas.filter(c=>opEstado(c)==='vencida');
 
   // ── Próximas citas ──
   const proximas=state.citas
-    .filter(c=>c.estado==='pendiente'&&c.fecha>=hoy)
+    .filter(c=>opEstado(c)==='pendiente'&&c.fecha>=hoy)
     .sort((a,b)=>a.fecha.localeCompare(b.fecha))
     .slice(0,8);
 
@@ -3770,8 +3995,8 @@ function renderInicioDT(){
     const m=d.toISOString().slice(0,7);
     const label=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'][d.getMonth()];
     const total=state.citas
-      .filter(c=>c.fecha&&c.fecha.startsWith(m)&&['cobrado_efectivo','cobrado_transferencia','depositado','por_facturar','facturado'].includes(c.estado))
-      .reduce((s,c)=>s+(c.cobro?.monto||c.precio||0),0);
+      .filter(c=>c.fecha&&c.fecha.startsWith(m)&&montoPagado(c)>0)
+      .reduce((s,c)=>s+montoPagado(c),0);
     meses.push({m,label,total});
   }
   const maxVal=Math.max(...meses.map(m=>m.total),1);
@@ -3789,7 +4014,7 @@ function renderInicioDT(){
 
   // ── Actividad reciente ──
   const recientes=state.citas
-    .filter(c=>['cobrado_efectivo','cobrado_transferencia','depositado','facturado'].includes(c.estado))
+    .filter(c=>montoPagado(c)>0)
     .sort((a,b)=>(b.cobro?.fechaCobro||b.fecha||'').localeCompare(a.cobro?.fechaCobro||a.fecha||''))
     .slice(0,5);
 
@@ -3811,12 +4036,12 @@ function renderInicioDT(){
     <div class="dt-kpi-card">
       <div class="dt-kpi-val" style="color:${porCobrar>0?'var(--warning)':'var(--text3)'}">${fmtMoney(porCobrar)}</div>
       <div class="dt-kpi-lbl">⏳ Por cobrar</div>
-      <div class="dt-kpi-sub">${state.citas.filter(c=>c.estado==='cerrado_sin_cobro').length} servicios</div>
+      <div class="dt-kpi-sub">${porCobrarCitas.length} servicios</div>
     </div>
     <div class="dt-kpi-card">
-      <div class="dt-kpi-val" style="color:${efectivoSinDepositar>0?'var(--warning)':'var(--text3)'}">${fmtMoney(efectivoSinDepositar)}</div>
-      <div class="dt-kpi-lbl">🏦 Efectivo sin depositar</div>
-      <div class="dt-kpi-sub">${state.citas.filter(c=>c.estado==='cobrado_efectivo').length} pagos</div>
+      <div class="dt-kpi-val" style="color:${porFacturarMonto>0?'var(--warning)':'var(--text3)'}">${fmtMoney(porFacturarMonto)}</div>
+      <div class="dt-kpi-lbl">🧾 Por facturar</div>
+      <div class="dt-kpi-sub">${porFacturarCitas.length} servicios</div>
     </div>
     <div class="dt-kpi-card">
       <div class="dt-kpi-val" style="color:${enCursoCount>0?'var(--primary)':'var(--text3)'}">${enCursoCount}</div>
@@ -3836,6 +4061,40 @@ function renderInicioDT(){
     <!-- COLUMNA IZQUIERDA -->
     <div class="dt-col">
 
+      <!-- En curso -->
+      ${enCursoCitas.length>0?`
+      <div class="dt-panel">
+        <div class="dt-panel-hdr" style="color:var(--warning)">🔧 En curso (${enCursoCitas.length})</div>
+        <div class="dt-panel-body">
+          ${enCursoCitas.map(cita=>{
+            const cli=getCliente(cita.clienteId);const piano=getPiano(cita.clienteId,cita.pianoId);
+            return`<div class="dt-row" onclick="showModalDetalleCita(${cita.id})" style="cursor:pointer">
+              <div class="avatar" style="width:36px;height:36px;font-size:12px;flex-shrink:0;background:var(--warning-light);color:var(--warning)">${cli?initials(cli.nombre):'?'}</div>
+              <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600">${cli?cli.nombre:'?'}</div>
+              <div style="font-size:11px;color:var(--text2)">${cita.servicio||''}${piano?' · '+pianoLabel(piano):''}</div></div>
+              <span style="font-size:11px;color:var(--warning);font-weight:700;flex-shrink:0">● Activo</span>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>`:''}
+
+      <!-- Pausadas -->
+      ${pausadasCitas.length>0?`
+      <div class="dt-panel">
+        <div class="dt-panel-hdr" style="color:#6b7280">⏸ Pausadas (${pausadasCitas.length})</div>
+        <div class="dt-panel-body">
+          ${pausadasCitas.map(cita=>{
+            const cli=getCliente(cita.clienteId);const piano=getPiano(cita.clienteId,cita.pianoId);
+            return`<div class="dt-row" onclick="showModalDetalleCita(${cita.id})" style="cursor:pointer">
+              <div class="avatar" style="width:36px;height:36px;font-size:12px;flex-shrink:0;background:#e5e7eb;color:#6b7280">${cli?initials(cli.nombre):'?'}</div>
+              <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600">${cli?cli.nombre:'?'}</div>
+              <div style="font-size:11px;color:var(--text2)">${cita.servicio||''}${piano?' · '+pianoLabel(piano):''}</div></div>
+              <span style="font-size:11px;color:#6b7280;font-weight:700;flex-shrink:0">⏸ Pausada</span>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>`:''}
+
       <!-- Próximas citas -->
       <div class="dt-panel">
         <div class="dt-panel-hdr">
@@ -3852,7 +4111,7 @@ function renderInicioDT(){
               const esMañana=cita.fecha===new Date(Date.now()+86400000).toISOString().split('T')[0];
               const badge=esHoy?`<span style="background:var(--primary);color:#fff;font-size:10px;padding:1px 7px;border-radius:10px;font-weight:700">HOY</span>`
                 :esMañana?`<span style="background:var(--warning-light);color:var(--warning);font-size:10px;padding:1px 7px;border-radius:10px;font-weight:700">MÑN</span>`:'';
-              return`<div class="dt-row" onclick="navigate('clientes')">
+              return`<div class="dt-row" onclick="showModalDetalleCita(${cita.id})" style="cursor:pointer">
                 <div class="avatar" style="width:36px;height:36px;font-size:12px;flex-shrink:0;background:var(--primary-light);color:var(--primary)">${cli?initials(cli.nombre):'?'}</div>
                 <div style="flex:1;min-width:0">
                   <div style="font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px">${cli?cli.nombre:'?'} ${badge}</div>
@@ -3867,27 +4126,43 @@ function renderInicioDT(){
         </div>
       </div>
 
-      <!-- Servicios vencidos / sin cobrar -->
-      ${(vencidos.length>0||state.citas.filter(c=>c.estado==='cerrado_sin_cobro').length>0)?`
+      <!-- Citas vencidas -->
+      ${vencidos.length>0?`
       <div class="dt-panel">
-        <div class="dt-panel-hdr" style="color:var(--danger)">⚠️ Requieren atención</div>
+        <div class="dt-panel-hdr" style="color:var(--danger)">🔴 Citas vencidas (${vencidos.length})</div>
         <div class="dt-panel-body">
-          ${vencidos.slice(0,3).map(cita=>{
+          ${vencidos.map(cita=>{
             const cli=getCliente(cita.clienteId);
-            return`<div class="dt-row">
+            return`<div class="dt-row" style="align-items:center">
               <span style="width:8px;height:8px;border-radius:50%;background:var(--danger);flex-shrink:0"></span>
-              <div style="flex:1"><div style="font-size:13px;font-weight:600">${cli?cli.nombre:'?'}</div>
-              <div style="font-size:11px;color:var(--text2)">${cita.servicio} · ${fmtDate(cita.fecha)}</div></div>
-              <span style="font-size:11px;color:var(--danger);font-weight:700">Vencida</span>
+              <div style="flex:1;min-width:0;cursor:pointer" onclick="showModalDetalleCita(${cita.id})">
+                <div style="font-size:13px;font-weight:600">${cli?cli.nombre:'?'}</div>
+                <div style="font-size:11px;color:var(--text2)">${cita.servicio} · venció ${fmtDate(cita.fecha)}</div>
+              </div>
+              <button class="btn btn-outline btn-xs" style="flex-shrink:0" onclick="event.stopPropagation();reagendarDesdeDetalle(${cita.id})">📅 Reagendar</button>
             </div>`;
           }).join('')}
-          ${state.citas.filter(c=>c.estado==='cerrado_sin_cobro').slice(0,3).map(cita=>{
-            const cli=getCliente(cita.clienteId);
-            return`<div class="dt-row">
+        </div>
+      </div>`:''}
+
+      <!-- Por cobrar -->
+      ${porCobrarCitas.length>0?`
+      <div class="dt-panel">
+        <div class="dt-panel-hdr" style="color:var(--danger)">
+          💰 Por cobrar (${porCobrarCitas.length})
+          <span style="font-weight:700;font-size:13px;color:var(--danger)">${fmtMoney(porCobrar)}</span>
+        </div>
+        <div class="dt-panel-body">
+          ${porCobrarCitas.map(cita=>{
+            const cli=getCliente(cita.clienteId);const saldo=saldoCita(cita);const pagado=montoPagado(cita);
+            return`<div class="dt-row" style="align-items:center">
               <span style="width:8px;height:8px;border-radius:50%;background:var(--warning);flex-shrink:0"></span>
-              <div style="flex:1"><div style="font-size:13px;font-weight:600">${cli?cli.nombre:'?'}</div>
-              <div style="font-size:11px;color:var(--text2)">${cita.servicio}</div></div>
-              <span style="font-size:11px;color:var(--warning);font-weight:700">Sin cobrar</span>
+              <div style="flex:1;min-width:0;cursor:pointer" onclick="showModalDetalleCita(${cita.id})">
+                <div style="font-size:13px;font-weight:600">${cli?cli.nombre:'?'}</div>
+                <div style="font-size:11px;color:var(--text2)">${cita.servicio}${pagado>0?' · anticipo '+fmtMoney(pagado):''}</div>
+              </div>
+              <div style="text-align:right;flex-shrink:0;margin-right:6px"><div style="font-size:12px;font-weight:700;color:var(--danger)">${fmtMoney(saldo)}</div></div>
+              <button class="btn btn-success btn-xs" style="flex-shrink:0" onclick="event.stopPropagation();modalRegistrarPago(${cita.id})">💰 Cobrar</button>
             </div>`;
           }).join('')}
         </div>
@@ -4629,12 +4904,19 @@ if(isDesktop()){
   initDesktop();
   navigate('inicio');
 }
-// ReInit en resize (ej. tablet rotation)
+// ReInit en resize (ej. tablet rotation) — v2.9.9: no recargar con modal abierto
 let _dtInited=isDesktop();
+let _resizeT=null;
+let _pendingRelayout=false;
+function _modalAbierto(){return !document.getElementById('modal-overlay').classList.contains('hidden');}
 window.addEventListener('resize',()=>{
-  const now=isDesktop();
-  if(now&&!_dtInited){_dtInited=true;location.reload();}
-  else if(!now&&_dtInited){_dtInited=false;location.reload();}
+  clearTimeout(_resizeT);
+  _resizeT=setTimeout(()=>{
+    const now=isDesktop();
+    if(now===_dtInited)return;            // no cambió el modo → nada que hacer
+    if(_modalAbierto()){_pendingRelayout=true;return;} // hay avance abierto → diferir
+    _dtInited=now;location.reload();
+  },250);
 });
 
 </script>
