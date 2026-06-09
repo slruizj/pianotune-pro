@@ -26,12 +26,12 @@
   :root{--safe-b:34px;}
 }
 body.kawaii{
-  --primary:#9b59b6;--primary-light:#f3e8fb;
-  --success:#27ae60;--success-light:#eafbf0;
-  --danger:#e91e8c;--danger-light:#fde8f4;
-  --warning:#e67e22;--warning-light:#fef5e7;
-  --text:#3d2b4a;--text2:#8e6fa0;--text3:#c4a8d4;
-  --bg:#fdf6ff;--surface:#fff8fe;--border:#e8d5f0;
+  --primary:#5C93AA;--primary-light:#A8C7D6;
+  --success:#7A9B57;--success-light:#E1E9B7;
+  --danger:#AB4543;--danger-light:#EEBAB7;
+  --warning:#C9AF60;--warning-light:#EEEBB7;
+  --text:#1c1c1e;--text2:#5C6BAA;--text3:#BAA8D6;
+  --bg:#EED3B7;--surface:#FFF8FE;--border:#D4A8D6;
 }
 html,body{height:100%;height:100dvh}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);max-width:430px;margin:0 auto;display:flex;flex-direction:column;overflow:hidden}
@@ -297,7 +297,7 @@ textarea.input{resize:vertical;min-height:68px}
     ☁️ <span id="dt-sync-txt">Listo</span>
   </div>
   <div style="padding:10px 16px 14px">
-    <div style="color:rgba(255,255,255,.35);font-size:10px;font-weight:600;letter-spacing:.4px">PianoTune Pro v2.10.3</div>
+    <div style="color:rgba(255,255,255,.35);font-size:10px;font-weight:600;letter-spacing:.4px">PianoTune Pro v2.10.4</div>
   </div>
 </div>
 
@@ -633,7 +633,7 @@ let _syncTimer=null;
 let _syncStatus='idle'; // idle | syncing | ok | error
 
 // v2.9.9 — Confiabilidad: detección automática de cambios por snapshot
-const SYNC_COLS=['clientes','citas','presupuestos','productos','servicios'];
+const SYNC_COLS=['clientes','citas','presupuestos','productos','servicios','notas'];
 let _snap={};
 function _recJson(r){return JSON.stringify({...r,updatedAt:undefined});}
 function _snapshotAll(){_snap={};SYNC_COLS.forEach(col=>{_snap[col]={};(state[col]||[]).forEach(r=>{if(r&&r.id!=null)_snap[col][r.id]=_recJson(r);});});}
@@ -743,6 +743,22 @@ function recalcEstados(){
 recalcEstados();
 // v2.9.9 — sello inicial de registros y snapshot base
 SYNC_COLS.forEach(col=>(state[col]||[]).forEach(r=>{if(r&&!r.updatedAt)r.updatedAt=Date.now();}));
+// v2.10.4 — migrar notas de localStorage legacy a state.notas
+(function(){
+  if(!state.notas||!state.notas.length){
+    try{
+      const legacy=JSON.parse(localStorage.getItem('ptp_notas')||'[]');
+      if(legacy.length){
+        state.notas=legacy;
+        legacy.forEach(n=>{if(!n.updatedAt)n.updatedAt=Date.now();});
+        try{localStorage.setItem(SK,JSON.stringify(state));}catch(e){}
+        localStorage.removeItem('ptp_notas');
+      }
+    }catch(e){}
+  }
+  if(!state.notas)state.notas=[];
+  state.notas.forEach(n=>{if(!n.updatedAt)n.updatedAt=Date.now();});
+})();
 if(!state.deleted)state.deleted=[];
 _snapshotAll();
 function nextId(){state.nextId=(state.nextId||0)+1;return Date.now()*1000+Math.floor(Math.random()*1000);}
@@ -846,7 +862,30 @@ function renderScreen(n){
 
 // ══ MODAL ══
 function openModal(html){document.getElementById('modal-body').innerHTML=html;document.getElementById('modal-overlay').classList.remove('hidden');}
-function closeModal(){document.getElementById('modal-overlay').classList.add('hidden');document.getElementById('modal-body').innerHTML='';if(_pendingRelayout){_pendingRelayout=false;if(isDesktop()!==_dtInited){_dtInited=isDesktop();location.reload();}}}
+function closeModal(){
+  document.getElementById('modal-overlay').classList.add('hidden');
+  document.getElementById('modal-body').innerHTML='';
+  // Actualizar contador de notas en dashboard
+  _refreshNotasCounter();
+  if(_pendingRelayout){_pendingRelayout=false;if(isDesktop()!==_dtInited){_dtInited=isDesktop();location.reload();}}
+}
+function _refreshNotasCounter(){
+  const n=(state.notas||[]).length;
+  // Móvil: stat-num dentro del stat-card de notas
+  document.querySelectorAll('.stat-card').forEach(el=>{
+    if(el.querySelector('.stat-label')?.textContent==='Notas'){
+      const num=el.querySelector('.stat-num span');
+      if(num)num.textContent=n;
+    }
+  });
+  // PC: dt-kpi-val del card de notas
+  document.querySelectorAll('.dt-kpi-card').forEach(el=>{
+    if(el.querySelector('.dt-kpi-lbl')?.textContent==='📝 Notas'){
+      const val=el.querySelector('.dt-kpi-val');
+      if(val)val.textContent=n;
+    }
+  });
+}
 
 // ══ GPS ══
 function capturarGPS(cbOk,cbErr){
@@ -1080,7 +1119,7 @@ async function renderInicio(){
     <div class="stat-card"><div class="stat-num">${state.clientes.reduce((s,c)=>s+c.pianos.length,0)}</div><div class="stat-label">Pianos</div></div>
     <div class="stat-card"><div class="stat-num">${state.citas.filter(c=>estaFacturada(c)).length}</div><div class="stat-label">Facturados</div></div>
     <div class="stat-card"><div class="stat-num">${Math.round(state.kmTotal)}<span style="font-size:13px"> km</span></div><div class="stat-label">Recorridos</div></div>
-    <div class="stat-card" onclick="abrirModalNotas()" style="cursor:pointer;grid-column:span 2"><div class="stat-num" style="font-size:18px">📝 <span style="font-size:22px;font-weight:800;color:var(--primary)">${(JSON.parse(localStorage.getItem('ptp_notas')||'[]') ).length}</span></div><div class="stat-label">Notas</div></div>
+    <div class="stat-card" onclick="abrirModalNotas()" style="cursor:pointer;grid-column:span 2"><div class="stat-num" style="font-size:18px">📝 <span style="font-size:22px;font-weight:800;color:var(--primary)">${(state.notas||[]).length}</span></div><div class="stat-label">Notas</div></div>
   </div>
 
   ${porVencer.length?`<div class="sec">🔔 Recurrencias por vencer</div>${renderPorVencer}`:''}
@@ -2854,8 +2893,8 @@ function renderHistorial(){
   ${lista}`;
 }
 // ══ NOTAS ══
-function getNotas(){return JSON.parse(localStorage.getItem('ptp_notas')||'[]');}
-function saveNotas(notas){localStorage.setItem('ptp_notas',JSON.stringify(notas));}
+function getNotas(){if(!state.notas)state.notas=[];return state.notas;}
+function saveNotas(notas){state.notas=notas;const now=Date.now();notas.forEach(n=>{if(!n.updatedAt)n.updatedAt=now;});saveState();}
 function fmtNotaTs(iso){
   const d=new Date(iso),now=new Date();
   const hoy=now.toDateString()===d.toDateString();
@@ -2897,7 +2936,7 @@ function crearNota(){
   const txt=(inp?inp.value:'').trim();
   if(!txt)return;
   const notas=getNotas();
-  notas.unshift({id:'n'+Date.now(),texto:txt,fecha:new Date().toISOString(),items:[]});
+  const _nts=Date.now();notas.unshift({id:'n'+_nts,texto:txt,fecha:new Date().toISOString(),items:[],updatedAt:_nts});
   saveNotas(notas);
   inp.value='';
   // refresh lista
@@ -2928,7 +2967,10 @@ function abrirNota(id){
       <div onclick="toggleItem('${id}','${it.id}')" style="width:22px;height:22px;border-radius:50%;border:1.5px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:center;cursor:pointer;background:${chk?'var(--success)':'transparent'};border-color:${chk?'var(--success)':'var(--border)'}">
         ${chk?`<span style="color:#fff;font-size:13px;font-weight:700">✓</span>`:''}
       </div>
-      <span style="font-size:14px;color:${chk?'var(--text3)':'var(--text)'};text-decoration:${chk?'line-through':'none'};flex:1">${it.texto}</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:14px;color:${chk?'var(--text3)':'var(--text)'};text-decoration:${chk?'line-through':'none'}">${it.texto}</div>
+        ${it.fecha?`<div style="font-size:11px;color:var(--text3);margin-top:2px">${fmtNotaTs(it.fecha)}</div>`:''}
+      </div>
     </div>`;
   }).join('');
   const html=`<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
@@ -2955,6 +2997,7 @@ function toggleItem(notaId,itemId){
   const it=n.items.find(x=>x.id===itemId);
   if(!it)return;
   it.checked=!it.checked;
+  n.updatedAt=Date.now();
   saveNotas(notas);
   abrirNota(notaId);
 }
@@ -2966,7 +3009,8 @@ function agregarItem(notaId){
   const n=notas.find(x=>x.id===notaId);
   if(!n)return;
   if(!n.items)n.items=[];
-  n.items.push({id:'i'+Date.now(),texto:txt,checked:false});
+  n.items.push({id:'i'+Date.now(),texto:txt,checked:false,fecha:new Date().toISOString()});
+  n.updatedAt=Date.now();
   saveNotas(notas);
   abrirNota(notaId);
 }
@@ -3159,7 +3203,7 @@ function renderConfig(){
   </div>
   <div class="credits-block">
     <div class="credits-logo">🎹</div>
-    <div class="credits-app">PianoTune Pro v2.10.3</div>
+    <div class="credits-app">PianoTune Pro v2.10.4</div>
     <div class="credits-dev">Desarrollado por Sergio L. Ruiz Jones</div>
     <div class="credits-co">Pianos and Pianos — Mazatlán, Sin.</div>
   </div>`;
@@ -4238,7 +4282,7 @@ function renderInicioDT(){
       <div class="dt-kpi-sub">Acumulado</div>
     </div>
     <div class="dt-kpi-card" onclick="abrirModalNotas()" style="cursor:pointer">
-      <div class="dt-kpi-val" style="color:var(--primary)">${(JSON.parse(localStorage.getItem('ptp_notas')||'[]')).length}</div>
+      <div class="dt-kpi-val" style="color:var(--primary)">${(state.notas||[]).length}</div>
       <div class="dt-kpi-lbl">📝 Notas</div>
       <div class="dt-kpi-sub">Toca para abrir</div>
     </div>
