@@ -25,6 +25,14 @@
 @supports not (padding-bottom:env(safe-area-inset-bottom)){
   :root{--safe-b:34px;}
 }
+body.kawaii{
+  --primary:#9b59b6;--primary-light:#f3e8fb;
+  --success:#27ae60;--success-light:#eafbf0;
+  --danger:#e91e8c;--danger-light:#fde8f4;
+  --warning:#e67e22;--warning-light:#fef5e7;
+  --text:#3d2b4a;--text2:#8e6fa0;--text3:#c4a8d4;
+  --bg:#fdf6ff;--surface:#fff8fe;--border:#e8d5f0;
+}
 html,body{height:100%;height:100dvh}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);max-width:430px;margin:0 auto;display:flex;flex-direction:column;overflow:hidden}
 .screen{flex:1;overflow-y:auto;overflow-x:hidden;padding-bottom:calc(var(--nav-h) + var(--safe-b) + 16px)}
@@ -253,7 +261,7 @@ textarea.input{resize:vertical;min-height:68px}
   .dt-nav-item.active{background:rgba(255,255,255,.2);color:#fff;box-shadow:0 2px 8px rgba(0,0,0,.2)}
   .dt-nav-icon{width:18px;height:18px;flex-shrink:0;opacity:.9}
   /* Dashboard grid */
-  .dt-kpi-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;padding:16px 24px 4px}
+  .dt-kpi-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:12px;padding:16px 24px 4px}
   .dt-kpi-card{background:var(--surface);border-radius:12px;padding:14px 16px;border:1px solid var(--border)}
   .dt-kpi-val{font-size:22px;font-weight:800;color:var(--primary);line-height:1}
   .dt-kpi-lbl{font-size:11px;color:var(--text2);margin-top:4px;font-weight:600}
@@ -289,7 +297,7 @@ textarea.input{resize:vertical;min-height:68px}
     ☁️ <span id="dt-sync-txt">Listo</span>
   </div>
   <div style="padding:10px 16px 14px">
-    <div style="color:rgba(255,255,255,.35);font-size:10px;font-weight:600;letter-spacing:.4px">PianoTune Pro v2.9.8</div>
+    <div style="color:rgba(255,255,255,.35);font-size:10px;font-weight:600;letter-spacing:.4px">PianoTune Pro v2.10.3</div>
   </div>
 </div>
 
@@ -1072,6 +1080,7 @@ async function renderInicio(){
     <div class="stat-card"><div class="stat-num">${state.clientes.reduce((s,c)=>s+c.pianos.length,0)}</div><div class="stat-label">Pianos</div></div>
     <div class="stat-card"><div class="stat-num">${state.citas.filter(c=>estaFacturada(c)).length}</div><div class="stat-label">Facturados</div></div>
     <div class="stat-card"><div class="stat-num">${Math.round(state.kmTotal)}<span style="font-size:13px"> km</span></div><div class="stat-label">Recorridos</div></div>
+    <div class="stat-card" onclick="abrirModalNotas()" style="cursor:pointer;grid-column:span 2"><div class="stat-num" style="font-size:18px">📝 <span style="font-size:22px;font-weight:800;color:var(--primary)">${(JSON.parse(localStorage.getItem('ptp_notas')||'[]') ).length}</span></div><div class="stat-label">Notas</div></div>
   </div>
 
   ${porVencer.length?`<div class="sec">🔔 Recurrencias por vencer</div>${renderPorVencer}`:''}
@@ -1474,7 +1483,10 @@ function crearCliente(retPresup=false){
     tipoCliente:(document.getElementById('nc-tipo')&&document.getElementById('nc-tipo').value)||'particular',
     lat:ncGPS.lat,lon:ncGPS.lon,pianos:[piano]};
   state.clientes.push(c);saveState();closeModal();showToast('Cliente creado ✓');
-  if(retPresup){
+  if(window._volverNuevaCita){
+    window._volverNuevaCita=false;
+    setTimeout(()=>showModalNuevaCita(null,null,null,c.id),150);
+  } else if(retPresup){
     navigate('presupuesto');
     setTimeout(()=>showModalNuevoPresupuesto(c.id),150);
   } else renderClientes();
@@ -1752,7 +1764,7 @@ function buildSvcSelector(wrapperId, inputId, priceId, preSelId){
   const agrupClaves = state.servicios.filter(s=>s.esAgrupado).flatMap(s=>s.subItems||[]);
   const visibles = state.servicios.filter(s => !agrupClaves.includes(s.clave));
   const cats = ['afinacion','reparacion','regulacion','entonacion','dkv','limpieza','restauracion','sistemas'];
-  const catLabels = {afinacion:'🎵 Afinación',reparacion:'🔧 Reparación',regulacion:'⚙️ Regulación',entonacion:'🎼 Entonación',dkv:'🎹 Disklavier',limpieza:'🧹 Limpieza',restauracion:'🪚 Restauración',sistemas:'⚡ Sistemas'};
+  const catLabels = {afinacion:'🎵 Afinación',reparacion:'🔧 Reparación',regulacion:'⚙️ Regulación',entonacion:'🎼 Entonación',revision:'🔍 Revisión',dkv:'🎹 Disklavier',limpieza:'🧹 Limpieza',restauracion:'🪚 Restauración',sistemas:'⚡ Sistemas'};
   const subBadge = {cola:'COLA',vertical:'VER',ambos:'',dkv:'DKV'};
   let activeCat = 'afinacion';
 
@@ -1779,7 +1791,7 @@ function buildSvcSelector(wrapperId, inputId, priceId, preSelId){
 function svcCatClick(wrapperId, inputId, priceId, preSelId, cat){
   const wrap = document.getElementById(wrapperId); if(!wrap) return;
   const cats = ['afinacion','reparacion','regulacion','entonacion','dkv','limpieza','restauracion','sistemas'];
-  const catLabels = {afinacion:'🎵 Afinación',reparacion:'🔧 Reparación',regulacion:'⚙️ Regulación',entonacion:'🎼 Entonación',dkv:'🎹 Disklavier',limpieza:'🧹 Limpieza',restauracion:'🪚 Restauración',sistemas:'⚡ Sistemas'};
+  const catLabels = {afinacion:'🎵 Afinación',reparacion:'🔧 Reparación',regulacion:'⚙️ Regulación',entonacion:'🎼 Entonación',revision:'🔍 Revisión',dkv:'🎹 Disklavier',limpieza:'🧹 Limpieza',restauracion:'🪚 Restauración',sistemas:'⚡ Sistemas'};
   const subBadge = {cola:'COLA',vertical:'VER',ambos:'',dkv:'DKV'};
   const agrupClaves = state.servicios.filter(s=>s.esAgrupado).flatMap(s=>s.subItems||[]);
   const visibles = state.servicios.filter(s => !agrupClaves.includes(s.clave));
@@ -1815,7 +1827,7 @@ function showModalNuevaCita(fechaPre,preCliId,prePianoId,prePresupId){
   if(prePresupId){const pp=state.presupuestos.find(x=>x.id===prePresupId);if(pp&&pp.items.length){preServNom=pp.items[0].nombre;prePrecio=pp.items[0].precio;}}
   openModal(`<div class="modal-title">Nueva cita</div>
   <div class="input-group"><label class="input-label">Cliente</label>
-    <select class="input select" id="nca-c" onchange="updPianosNuevaCita();updPresupNuevaCita()">${cliOpts?`<option value="">Seleccionar…</option>${cliOpts}`:'<option>Sin clientes</option>'}</select></div>
+    <div style="display:flex;gap:8px;align-items:center"><select class="input select" id="nca-c" onchange="updPianosNuevaCita();updPresupNuevaCita()" style="flex:1">${cliOpts?`<option value="">Seleccionar…</option>${cliOpts}`:'<option>Sin clientes</option>'}</select><button type="button" class="btn btn-ghost btn-sm" onclick="abrirNuevoClienteDesdeNuevaCita()" style="white-space:nowrap;flex-shrink:0">+ Cliente</button></div></div>
   <div class="input-group"><label class="input-label">Piano</label>
     <select class="input select" id="nca-p">${pianoInit}</select></div>
   <div class="input-group"><label class="input-label">Presupuesto vinculado (opcional)</label>
@@ -1867,6 +1879,17 @@ function updCitaDesdePresup(){
   if(pp.pianoId){const pSel=document.getElementById('nca-p');if(pSel)pSel.value=pp.pianoId;}
 }
 function buildPianoOpts(cliId,selPId){const c=getCliente(parseInt(cliId));if(!c||!c.pianos.length)return'<option value="">Sin pianos</option>';return c.pianos.map(p=>`<option value="${p.id}" ${p.id===selPId?'selected':''}>${p.marca} ${p.modelo} (${p.tipo})</option>`).join('');}
+function abrirNuevoClienteDesdeNuevaCita(){
+  // Guardar estado actual de la cita
+  const f=document.getElementById('nca-f')?.value||'';
+  const h=document.getElementById('nca-h')?.value||'';
+  const pr=document.getElementById('nca-pr')?.value||'';
+  window._ncaState={fecha:f,hora:h,precio:pr};
+  // Abrir modal nuevo cliente; al cerrar, re-abrir nueva cita con cliente seleccionado
+  window._volverNuevaCita=true;
+  closeModal();
+  setTimeout(()=>abrirModalNuevoCliente(),100);
+}
 function updPianosNuevaCita(){const cliId=document.getElementById('nca-c').value;const sel=document.getElementById('nca-p');const c=getCliente(parseInt(cliId));if(!c||!c.pianos.length){sel.innerHTML='<option value="">Sin pianos</option>';return;}sel.innerHTML=c.pianos.map(p=>`<option value="${p.id}">${p.marca} ${p.modelo} (${p.tipo})</option>`).join('');}
 function updPrecioNuevaCita(){svcSelChange('nca-s','nca-pr');}
 function crearCita(){
@@ -1885,7 +1908,7 @@ function crearCita(){
 }
 
 // ══ SCREEN: SERVICIOS ══
-var CAT_LABELS={afinacion:'🎵 Afinación',reparacion:'🔧 Reparación',regulacion:'⚙️ Regulación',entonacion:'🎼 Entonación',dkv:'🎹 Disklavier',limpieza:'🧹 Limpieza',restauracion:'🪚 Restauración',sistemas:'⚡ Sistemas'};
+var CAT_LABELS={afinacion:'🎵 Afinación',reparacion:'🔧 Reparación',regulacion:'⚙️ Regulación',entonacion:'🎼 Entonación',revision:'🔍 Revisión',dkv:'🎹 Disklavier',limpieza:'🧹 Limpieza',restauracion:'🪚 Restauración',sistemas:'⚡ Sistemas'};
 var CAT_ORDER=['afinacion','reparacion','regulacion','entonacion','dkv','limpieza','restauracion','sistemas'];
 var SUB_BADGE={cola:'<span style="font-size:10px;padding:1px 6px;border-radius:10px;background:#e8f0fe;color:#1a56db;font-weight:700">COLA</span>',vertical:'<span style="font-size:10px;padding:1px 6px;border-radius:10px;background:#e6f4ea;color:#0f9d58;font-weight:700">VERTICAL</span>',ambos:'<span style="font-size:10px;padding:1px 6px;border-radius:10px;background:#f0f0f0;color:#6e6e73;font-weight:700">AMBOS</span>',dkv:'<span style="font-size:10px;padding:1px 6px;border-radius:10px;background:#fef7e0;color:#f29900;font-weight:700">DKV</span>'};
 let _svcFiltro='todos';
@@ -2062,7 +2085,7 @@ function showModalEditarServicio(id){const s=state.servicios.find(x=>x.id===id);
   <div class="input-group"><label class="input-label">Duración (horas)</label><input type="number" class="input" id="es-d" value="${+(s.duracion/60).toFixed(1)}" step="0.5" min="0.5"></div>
   <div class="input-group"><label class="input-label">Categoría</label>
     <select class="input select" id="es-cat">
-      ${['afinacion','reparacion','regulacion','entonacion','dkv','limpieza','restauracion','sistemas'].map(c=>`<option value="${c}" ${s.categoria===c?'selected':''}>${CAT_LABELS[c]||c}</option>`).join('')}
+      ${['afinacion','reparacion','regulacion','entonacion','revision','dkv','limpieza','restauracion','sistemas'].map(c=>`<option value="${c}" ${s.categoria===c?'selected':''}>${CAT_LABELS[c]||c}</option>`).join('')}
     </select></div>
   <div class="input-group"><label class="input-label">Tipo de piano</label>
     <select class="input select" id="es-sub">
@@ -2830,6 +2853,144 @@ function renderHistorial(){
   </div>
   ${lista}`;
 }
+// ══ NOTAS ══
+function getNotas(){return JSON.parse(localStorage.getItem('ptp_notas')||'[]');}
+function saveNotas(notas){localStorage.setItem('ptp_notas',JSON.stringify(notas));}
+function fmtNotaTs(iso){
+  const d=new Date(iso),now=new Date();
+  const hoy=now.toDateString()===d.toDateString();
+  const ayer=new Date(now-86400000).toDateString()===d.toDateString();
+  let h=d.getHours(),m=d.getMinutes(),ampm=h>=12?'PM':'AM';
+  h=h%12||12;
+  const mm=m<10?'0'+m:m;
+  const time=h+':'+mm+' '+ampm;
+  if(hoy)return 'Hoy '+time;
+  if(ayer)return 'Ayer '+time;
+  const mes=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'][d.getMonth()];
+  return mes+' '+d.getDate()+' · '+time;
+}
+function abrirModalNotas(){
+  const notas=getNotas();
+  const lista=notas.length?notas.map(n=>{
+    const pend=n.items?n.items.filter(i=>!i.checked).length:0;
+    const badge=pend>0
+      ?`<span style="font-size:11px;padding:2px 8px;border-radius:20px;background:var(--warning-light);color:var(--warning);font-weight:700">${pend} pendiente${pend>1?'s':''}</span>`
+      :`<span style="font-size:11px;padding:2px 8px;border-radius:20px;background:var(--success-light);color:var(--success);font-weight:700">Sin pendientes</span>`;
+    return `<div onclick="abrirNota('${n.id}')" style="padding:12px 16px;border-bottom:1px solid var(--border);cursor:pointer;active:background:var(--bg)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+        <span style="font-size:12px;color:var(--text3)">${fmtNotaTs(n.fecha)}</span>${badge}
+      </div>
+      <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${n.texto.split('\n')[0]||'(sin texto)'}</div>
+      ${n.items&&n.items.length?`<div style="font-size:12px;color:var(--text2)">${n.items.map(i=>(i.checked?'✓ ':'○ ')+i.texto).slice(0,2).join(' · ')}</div>`:''}
+    </div>`;
+  }).join(''):`<div style="padding:24px 16px;text-align:center;color:var(--text3);font-size:14px">Sin notas aún</div>`;
+  const html=`<div class="modal-title">📝 Notas</div>
+  <div style="display:flex;gap:8px;padding:12px 16px;border-bottom:1px solid var(--border);align-items:center">
+    <input type="text" id="nota-nueva-txt" class="input" placeholder="Nueva nota…" style="flex:1;font-size:14px" onkeydown="if(event.key==='Enter')crearNota()">
+    <button class="btn btn-primary btn-sm" onclick="crearNota()">Aceptar</button>
+  </div>
+  <div id="notas-lista" style="max-height:65vh;overflow-y:auto">${lista}</div>`;
+  openModal(html);
+}
+function crearNota(){
+  const inp=document.getElementById('nota-nueva-txt');
+  const txt=(inp?inp.value:'').trim();
+  if(!txt)return;
+  const notas=getNotas();
+  notas.unshift({id:'n'+Date.now(),texto:txt,fecha:new Date().toISOString(),items:[]});
+  saveNotas(notas);
+  inp.value='';
+  // refresh lista
+  const notas2=getNotas();
+  const lista=notas2.map(n=>{
+    const pend=n.items?n.items.filter(i=>!i.checked).length:0;
+    const badge=pend>0
+      ?`<span style="font-size:11px;padding:2px 8px;border-radius:20px;background:var(--warning-light);color:var(--warning);font-weight:700">${pend} pendiente${pend>1?'s':''}</span>`
+      :`<span style="font-size:11px;padding:2px 8px;border-radius:20px;background:var(--success-light);color:var(--success);font-weight:700">Sin pendientes</span>`;
+    return `<div onclick="abrirNota('${n.id}')" style="padding:12px 16px;border-bottom:1px solid var(--border);cursor:pointer">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+        <span style="font-size:12px;color:var(--text3)">${fmtNotaTs(n.fecha)}</span>${badge}
+      </div>
+      <div style="font-size:14px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${n.texto.split('\n')[0]||'(sin texto)'}</div>
+      ${n.items&&n.items.length?`<div style="font-size:12px;color:var(--text2)">${n.items.map(i=>(i.checked?'✓ ':'○ ')+i.texto).slice(0,2).join(' · ')}</div>`:''}
+    </div>`;
+  }).join('');
+  const l=document.getElementById('notas-lista');
+  if(l)l.innerHTML=lista||'<div style="padding:24px 16px;text-align:center;color:var(--text3);font-size:14px">Sin notas aún</div>';
+}
+function abrirNota(id){
+  const notas=getNotas();
+  const n=notas.find(x=>x.id===id);
+  if(!n)return;
+  const items=(n.items||[]).map(it=>{
+    const chk=it.checked;
+    return `<div id="item-row-${it.id}" style="display:flex;align-items:center;gap:10px;padding:9px 16px;border-bottom:1px solid var(--border)">
+      <div onclick="toggleItem('${id}','${it.id}')" style="width:22px;height:22px;border-radius:50%;border:1.5px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:center;cursor:pointer;background:${chk?'var(--success)':'transparent'};border-color:${chk?'var(--success)':'var(--border)'}">
+        ${chk?`<span style="color:#fff;font-size:13px;font-weight:700">✓</span>`:''}
+      </div>
+      <span style="font-size:14px;color:${chk?'var(--text3)':'var(--text)'};text-decoration:${chk?'line-through':'none'};flex:1">${it.texto}</span>
+    </div>`;
+  }).join('');
+  const html=`<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+    <button class="btn btn-ghost btn-xs" onclick="abrirModalNotas()">← Notas</button>
+    <button class="btn btn-ghost btn-xs" style="margin-left:auto;color:var(--danger)" onclick="eliminarNota('${id}')">Eliminar</button>
+  </div>
+  <div style="padding:12px 16px 0">
+    <div style="font-size:12px;color:var(--text3);margin-bottom:6px">${fmtNotaTs(n.fecha)}</div>
+    <div style="font-size:15px;color:var(--text);line-height:1.5;white-space:pre-wrap">${n.texto}</div>
+  </div>
+  <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.6px;padding:12px 16px 6px;border-top:1px solid var(--border);margin-top:10px">Pendientes</div>
+  <div id="items-lista-${id}">${items}</div>
+  <div style="display:flex;gap:8px;padding:10px 16px 4px;align-items:center">
+    <input type="text" id="nuevo-item-${id}" class="input" placeholder="Agregar pendiente…" style="flex:1;font-size:13px" onkeydown="if(event.key==='Enter')agregarItem('${id}')">
+    <button class="btn btn-ghost btn-sm" onclick="agregarItem('${id}')">＋</button>
+  </div>`;
+  const modalBody=document.getElementById('modal-body');
+  if(modalBody)modalBody.innerHTML=html;
+}
+function toggleItem(notaId,itemId){
+  const notas=getNotas();
+  const n=notas.find(x=>x.id===notaId);
+  if(!n)return;
+  const it=n.items.find(x=>x.id===itemId);
+  if(!it)return;
+  it.checked=!it.checked;
+  saveNotas(notas);
+  abrirNota(notaId);
+}
+function agregarItem(notaId){
+  const inp=document.getElementById('nuevo-item-'+notaId);
+  const txt=inp?inp.value.trim():'';
+  if(!txt)return;
+  const notas=getNotas();
+  const n=notas.find(x=>x.id===notaId);
+  if(!n)return;
+  if(!n.items)n.items=[];
+  n.items.push({id:'i'+Date.now(),texto:txt,checked:false});
+  saveNotas(notas);
+  abrirNota(notaId);
+}
+function eliminarNota(id){
+  const notas=getNotas().filter(x=>x.id!==id);
+  saveNotas(notas);
+  abrirModalNotas();
+}
+// ══ FIN NOTAS ══
+
+function toggleKawaii(on){
+  document.body.classList.toggle('kawaii',on);
+  localStorage.setItem('ptp_ui_mode',on?'kawaii':'normal');
+  const slider=document.getElementById('kawaii-slider');
+  const knob=document.getElementById('kawaii-knob');
+  if(slider){slider.style.background=on?'var(--primary)':'var(--border)';}
+  if(knob){knob.style.transform=on?'translateX(20px)':'none';}
+}
+function initKawaii(){
+  const mode=localStorage.getItem('ptp_ui_mode');
+  const on=mode==='kawaii';
+  document.body.classList.toggle('kawaii',on);
+}
+initKawaii();
 function renderConfig(){
   const tec=state.tecnico||{};
   const avatarHTML=tec.foto
@@ -2983,12 +3144,35 @@ function renderConfig(){
   <div class="settings-row"><div class="sr-title">Servicios realizados</div><div style="font-weight:700">${state.citas.filter(c=>c.estado==='realizado').length}</div></div>
   <div style="padding:16px"><button class="btn btn-danger btn-full" onclick="resetDatos()">⚠ Resetear todos los datos</button></div>
 
+  <div class="settings-section" style="margin-top:8px">
+    <div class="settings-row" style="justify-content:space-between;align-items:center">
+      <div>
+        <div class="sr-title">🌸 Modo Kawaii</div>
+        <div style="font-size:12px;color:var(--text2);margin-top:2px">Paleta de colores pastel</div>
+      </div>
+      <label style="position:relative;display:inline-block;width:44px;height:24px;cursor:pointer">
+        <input type="checkbox" id="toggle-kawaii" onchange="toggleKawaii(this.checked)" style="opacity:0;width:0;height:0;position:absolute">
+        <span id="kawaii-slider" style="position:absolute;inset:0;background:var(--border);border-radius:24px;transition:.2s;"></span>
+        <span id="kawaii-knob" style="position:absolute;left:2px;top:2px;width:20px;height:20px;background:#fff;border-radius:50%;transition:.2s;box-shadow:0 1px 3px rgba(0,0,0,.2)"></span>
+      </label>
+    </div>
+  </div>
   <div class="credits-block">
     <div class="credits-logo">🎹</div>
-    <div class="credits-app">PianoTune Pro v2.10.2</div>
+    <div class="credits-app">PianoTune Pro v2.10.3</div>
     <div class="credits-dev">Desarrollado por Sergio L. Ruiz Jones</div>
     <div class="credits-co">Pianos and Pianos — Mazatlán, Sin.</div>
   </div>`;
+  // Sync kawaii toggle state
+  setTimeout(()=>{
+    const on=document.body.classList.contains('kawaii');
+    const cb=document.getElementById('toggle-kawaii');
+    const slider=document.getElementById('kawaii-slider');
+    const knob=document.getElementById('kawaii-knob');
+    if(cb)cb.checked=on;
+    if(slider)slider.style.background=on?'var(--primary)':'var(--border)';
+    if(knob)knob.style.transform=on?'translateX(20px)':'none';
+  },50);
 }
 
 function subirFotoTecnico(inp){
@@ -4052,6 +4236,11 @@ function renderInicioDT(){
       <div class="dt-kpi-val" style="color:var(--text2)">${state.kmTotal||0} km</div>
       <div class="dt-kpi-lbl">🚗 Recorridos totales</div>
       <div class="dt-kpi-sub">Acumulado</div>
+    </div>
+    <div class="dt-kpi-card" onclick="abrirModalNotas()" style="cursor:pointer">
+      <div class="dt-kpi-val" style="color:var(--primary)">${(JSON.parse(localStorage.getItem('ptp_notas')||'[]')).length}</div>
+      <div class="dt-kpi-lbl">📝 Notas</div>
+      <div class="dt-kpi-sub">Toca para abrir</div>
     </div>
   </div>
 
