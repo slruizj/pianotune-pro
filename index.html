@@ -297,7 +297,7 @@ textarea.input{resize:vertical;min-height:68px}
     ☁️ <span id="dt-sync-txt">Listo</span>
   </div>
   <div style="padding:10px 16px 14px">
-    <div style="color:rgba(255,255,255,.35);font-size:10px;font-weight:600;letter-spacing:.4px">PianoTune Pro v2.10.4</div>
+    <div style="color:rgba(255,255,255,.35);font-size:10px;font-weight:600;letter-spacing:.4px">PianoTune Pro v2.10.5</div>
   </div>
 </div>
 
@@ -369,6 +369,7 @@ const SK='pianotune_v3';
 const isDesktop=()=>window.innerWidth>=1024; // v2.9.0 — debe estar al inicio
 var DT_SCREEN_TITLES={inicio:'Dashboard',clientes:'Clientes',calendario:'Agenda',servicios:'Catálogo de servicios',productos:'Inventario',presupuesto:'Presupuestos',config:'Configuración',cotizador:'Cotizador de Cuerdas',ayuda:'Manual de Ayuda'};
 const PIANO_TIPOS={
+  'Cola':["9 pies (Concert)","7 pies (Semi-Concert)","6 pies (Medium)","Baby Grand (hasta 5p4)","Cuarto de Cola (5p5-6p5)"],
   'Grand':["9 pies (Concert)","7 pies (Semi-Concert)","6 pies (Medium)","Baby Grand"],
   'Vertical':["Profesional (131cm+)","Estudio (116-131cm)","Consola (110-116cm)","Espinet (<110cm)"]
 };
@@ -681,6 +682,18 @@ async function fetchRemote(){
     if(json.ok&&json.data&&json.data!=='{}')return JSON.parse(json.data);
   }catch(err){console.warn('fetchRemote falló:',err);}
   return null;
+}
+async function forcePushAll(){
+  // Forzar re-stamp de todos los registros con updatedAt = ahora
+  const now=Date.now();
+  SYNC_COLS.forEach(col=>(state[col]||[]).forEach(r=>{if(r&&r.id!=null)r.updatedAt=now;}));
+  state._hasPulled=true;
+  state._syncTs=now;
+  try{localStorage.setItem(SK,JSON.stringify(state));}catch(e){}
+  _snapshotAll();
+  showToast('📤 Enviando todos los datos...');
+  await pushToCloud();
+  showToast('✅ Todos los datos enviados ✓');
 }
 async function pushToCloud(){
   if(!state._hasPulled){console.log('Push diferido: pull inicial primero');await pullFromCloud();return;}
@@ -1527,6 +1540,7 @@ function crearCliente(retPresup=false){
     setTimeout(()=>showModalNuevaCita(null,null,null,c.id),150);
   } else if(retPresup){
     navigate('presupuesto');
+    _pbReturnFromMini=true; // preservar items existentes
     setTimeout(()=>showModalNuevoPresupuesto(c.id),150);
   } else renderClientes();
 }
@@ -1802,7 +1816,7 @@ function cancelarCita(id){if(!confirm('¿Cancelar esta cita?'))return;state.cita
 function buildSvcSelector(wrapperId, inputId, priceId, preSelId){
   const agrupClaves = state.servicios.filter(s=>s.esAgrupado).flatMap(s=>s.subItems||[]);
   const visibles = state.servicios.filter(s => !agrupClaves.includes(s.clave));
-  const cats = ['afinacion','reparacion','regulacion','entonacion','dkv','limpieza','restauracion','sistemas'];
+  const cats = ['afinacion','reparacion','regulacion','entonacion','revision','dkv','limpieza','restauracion','sistemas'];
   const catLabels = {afinacion:'🎵 Afinación',reparacion:'🔧 Reparación',regulacion:'⚙️ Regulación',entonacion:'🎼 Entonación',revision:'🔍 Revisión',dkv:'🎹 Disklavier',limpieza:'🧹 Limpieza',restauracion:'🪚 Restauración',sistemas:'⚡ Sistemas'};
   const subBadge = {cola:'COLA',vertical:'VER',ambos:'',dkv:'DKV'};
   let activeCat = 'afinacion';
@@ -1829,7 +1843,7 @@ function buildSvcSelector(wrapperId, inputId, priceId, preSelId){
 }
 function svcCatClick(wrapperId, inputId, priceId, preSelId, cat){
   const wrap = document.getElementById(wrapperId); if(!wrap) return;
-  const cats = ['afinacion','reparacion','regulacion','entonacion','dkv','limpieza','restauracion','sistemas'];
+  const cats = ['afinacion','reparacion','regulacion','entonacion','revision','dkv','limpieza','restauracion','sistemas'];
   const catLabels = {afinacion:'🎵 Afinación',reparacion:'🔧 Reparación',regulacion:'⚙️ Regulación',entonacion:'🎼 Entonación',revision:'🔍 Revisión',dkv:'🎹 Disklavier',limpieza:'🧹 Limpieza',restauracion:'🪚 Restauración',sistemas:'⚡ Sistemas'};
   const subBadge = {cola:'COLA',vertical:'VER',ambos:'',dkv:'DKV'};
   const agrupClaves = state.servicios.filter(s=>s.esAgrupado).flatMap(s=>s.subItems||[]);
@@ -1927,7 +1941,7 @@ function abrirNuevoClienteDesdeNuevaCita(){
   // Abrir modal nuevo cliente; al cerrar, re-abrir nueva cita con cliente seleccionado
   window._volverNuevaCita=true;
   closeModal();
-  setTimeout(()=>abrirModalNuevoCliente(),100);
+  setTimeout(()=>showModalNuevoCliente(false),100);
 }
 function updPianosNuevaCita(){const cliId=document.getElementById('nca-c').value;const sel=document.getElementById('nca-p');const c=getCliente(parseInt(cliId));if(!c||!c.pianos.length){sel.innerHTML='<option value="">Sin pianos</option>';return;}sel.innerHTML=c.pianos.map(p=>`<option value="${p.id}">${p.marca} ${p.modelo} (${p.tipo})</option>`).join('');}
 function updPrecioNuevaCita(){svcSelChange('nca-s','nca-pr');}
@@ -1948,7 +1962,7 @@ function crearCita(){
 
 // ══ SCREEN: SERVICIOS ══
 var CAT_LABELS={afinacion:'🎵 Afinación',reparacion:'🔧 Reparación',regulacion:'⚙️ Regulación',entonacion:'🎼 Entonación',revision:'🔍 Revisión',dkv:'🎹 Disklavier',limpieza:'🧹 Limpieza',restauracion:'🪚 Restauración',sistemas:'⚡ Sistemas'};
-var CAT_ORDER=['afinacion','reparacion','regulacion','entonacion','dkv','limpieza','restauracion','sistemas'];
+var CAT_ORDER=['afinacion','reparacion','regulacion','entonacion','revision','dkv','limpieza','restauracion','sistemas'];
 var SUB_BADGE={cola:'<span style="font-size:10px;padding:1px 6px;border-radius:10px;background:#e8f0fe;color:#1a56db;font-weight:700">COLA</span>',vertical:'<span style="font-size:10px;padding:1px 6px;border-radius:10px;background:#e6f4ea;color:#0f9d58;font-weight:700">VERTICAL</span>',ambos:'<span style="font-size:10px;padding:1px 6px;border-radius:10px;background:#f0f0f0;color:#6e6e73;font-weight:700">AMBOS</span>',dkv:'<span style="font-size:10px;padding:1px 6px;border-radius:10px;background:#fef7e0;color:#f29900;font-weight:700">DKV</span>'};
 let _svcFiltro='todos';
 function renderServicios(){
@@ -3021,6 +3035,75 @@ function eliminarNota(id){
 }
 // ══ FIN NOTAS ══
 
+// ══ KAWAII COLOR EDITOR ══
+const KAWAII_VARS=[
+  {key:'--primary',        label:'Botones principales',  default:'#5C93AA'},
+  {key:'--primary-light',  label:'Fondo primario',        default:'#A8C7D6'},
+  {key:'--success',        label:'Éxito / confirmación',  default:'#7A9B57'},
+  {key:'--success-light',  label:'Fondo éxito',           default:'#E1E9B7'},
+  {key:'--danger',         label:'Eliminar / error',      default:'#AB4543'},
+  {key:'--danger-light',   label:'Fondo error',           default:'#EEBAB7'},
+  {key:'--warning',        label:'Alertas / pendientes',  default:'#C9AF60'},
+  {key:'--warning-light',  label:'Fondo alerta',          default:'#EEEBB7'},
+  {key:'--bg',             label:'Fondo general',         default:'#EED3B7'},
+  {key:'--surface',        label:'Superficies / tarjetas',default:'#FFF8FE'},
+  {key:'--border',         label:'Bordes',                default:'#D4A8D6'},
+  {key:'--text2',          label:'Texto secundario',      default:'#5C6BAA'},
+  {key:'--text3',          label:'Texto terciario',       default:'#BAA8D6'},
+];
+function getKawaiiColors(){
+  try{return JSON.parse(localStorage.getItem('ptp_kawaii_colors')||'{}');}catch{return {};}
+}
+function saveKawaiiColor(key,val){
+  const c=getKawaiiColors();c[key]=val;
+  localStorage.setItem('ptp_kawaii_colors',JSON.stringify(c));
+  if(document.body.classList.contains('kawaii')){
+    document.body.style.setProperty(key,val);
+  }
+}
+function applyKawaiiColors(){
+  const c=getKawaiiColors();
+  KAWAII_VARS.forEach(v=>{
+    if(c[v.key])document.body.style.setProperty(v.key,c[v.key]);
+  });
+}
+function resetKawaiiColors(){
+  localStorage.removeItem('ptp_kawaii_colors');
+  KAWAII_VARS.forEach(v=>document.body.style.removeProperty(v.key));
+  renderKawaiiEditor();
+  showToast('Colores restablecidos ✓');
+}
+function renderKawaiiEditor(){
+  const ed=document.getElementById('kawaii-editor');
+  if(!ed)return;
+  const on=document.body.classList.contains('kawaii');
+  ed.style.display=on?'block':'none';
+  if(!on)return;
+  const saved=getKawaiiColors();
+  // Get current actual values from CSS
+  const cs=getComputedStyle(document.body);
+  ed.innerHTML=`
+    <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px">Personalizar colores</div>
+    ${KAWAII_VARS.map(v=>{
+      const current=saved[v.key]||(cs.getPropertyValue(v.key).trim()||v.default);
+      return `<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border)">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:600;color:var(--text)">${v.label}</div>
+          <div style="font-size:11px;color:var(--text3);font-family:monospace">${v.key}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+          <div style="width:28px;height:28px;border-radius:6px;background:${current};border:1px solid var(--border)"></div>
+          <input type="color" value="${current.length===7?current:v.default}" onchange="saveKawaiiColor('${v.key}',this.value);renderKawaiiEditor()" style="width:36px;height:36px;border:none;padding:0;background:none;cursor:pointer;border-radius:6px;overflow:hidden">
+        </div>
+      </div>`;
+    }).join('')}
+    <button class="btn btn-ghost btn-sm btn-full" style="margin-top:10px" onclick="resetKawaiiColors()">↺ Restablecer colores por defecto</button>
+  `;
+}
+// Aplicar colores guardados al iniciar
+(function(){if(document.body.classList.contains('kawaii'))applyKawaiiColors();})();
+// ══ FIN KAWAII EDITOR ══
+
 function toggleKawaii(on){
   document.body.classList.toggle('kawaii',on);
   localStorage.setItem('ptp_ui_mode',on?'kawaii':'normal');
@@ -3028,6 +3111,8 @@ function toggleKawaii(on){
   const knob=document.getElementById('kawaii-knob');
   if(slider){slider.style.background=on?'var(--primary)':'var(--border)';}
   if(knob){knob.style.transform=on?'translateX(20px)':'none';}
+  if(on){applyKawaiiColors();}
+  else{KAWAII_VARS.forEach(v=>document.body.style.removeProperty(v.key));}
 }
 function initKawaii(){
   const mode=localStorage.getItem('ptp_ui_mode');
@@ -3168,11 +3253,12 @@ function renderConfig(){
   <div class="settings-row">
     <div><div class="sr-title">☁️ Google Sheets Sync</div>
     <div class="sr-sub" id="sync-cfg-sub">Estado: verificando...</div></div>
-    <button class="btn btn-outline btn-xs" onclick="pullFromCloud()">↓ Sync</button>
   </div>
-  <div style="padding:4px 16px 12px;display:flex;gap:8px">
-    <button class="btn btn-primary btn-xs" onclick="pushToCloud().then(()=>showToast('✅ Datos enviados'))">↑ Forzar push</button>
+  <div style="padding:4px 16px 12px;display:flex;gap:8px;flex-wrap:wrap">
+    <button class="btn btn-primary btn-sm" style="flex:1" onclick="pullFromCloud().then(()=>showToast('☁️ Datos recibidos ✓'))">☁️ ↓ Recibir cambios</button>
+    <button class="btn btn-outline btn-sm" style="flex:1" onclick="forcePushAll()">📤 ↑ Enviar todo</button>
   </div>
+  <div style="padding:0 16px 12px;font-size:12px;color:var(--text3)">Si los datos no se sincronizan entre dispositivos, usa "Enviar todo" en el dispositivo con los datos más recientes, luego "Recibir cambios" en los otros.</div>
 
   <div class="sec">Backup</div>
   <div class="settings-row"><div><div class="sr-title">Exportar JSON</div><div class="sr-sub">Descarga todos tus datos</div></div><button class="btn btn-primary btn-xs" onclick="exportarJSON()">Exportar</button></div>
@@ -3195,15 +3281,16 @@ function renderConfig(){
         <div style="font-size:12px;color:var(--text2);margin-top:2px">Paleta de colores pastel</div>
       </div>
       <label style="position:relative;display:inline-block;width:44px;height:24px;cursor:pointer">
-        <input type="checkbox" id="toggle-kawaii" onchange="toggleKawaii(this.checked)" style="opacity:0;width:0;height:0;position:absolute">
+        <input type="checkbox" id="toggle-kawaii" onchange="toggleKawaii(this.checked);renderKawaiiEditor()" style="opacity:0;width:0;height:0;position:absolute">
         <span id="kawaii-slider" style="position:absolute;inset:0;background:var(--border);border-radius:24px;transition:.2s;"></span>
         <span id="kawaii-knob" style="position:absolute;left:2px;top:2px;width:20px;height:20px;background:#fff;border-radius:50%;transition:.2s;box-shadow:0 1px 3px rgba(0,0,0,.2)"></span>
       </label>
     </div>
+    <div id="kawaii-editor" style="display:none;padding:10px 0 4px"></div>
   </div>
   <div class="credits-block">
     <div class="credits-logo">🎹</div>
-    <div class="credits-app">PianoTune Pro v2.10.4</div>
+    <div class="credits-app">PianoTune Pro v2.10.5</div>
     <div class="credits-dev">Desarrollado por Sergio L. Ruiz Jones</div>
     <div class="credits-co">Pianos and Pianos — Mazatlán, Sin.</div>
   </div>`;
@@ -3216,6 +3303,7 @@ function renderConfig(){
     if(cb)cb.checked=on;
     if(slider)slider.style.background=on?'var(--primary)':'var(--border)';
     if(knob)knob.style.transform=on?'translateX(20px)':'none';
+    renderKawaiiEditor();
   },50);
 }
 
