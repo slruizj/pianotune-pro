@@ -297,7 +297,7 @@ textarea.input{resize:vertical;min-height:68px}
     ☁️ <span id="dt-sync-txt">Listo</span>
   </div>
   <div style="padding:10px 16px 14px">
-    <div style="color:rgba(255,255,255,.35);font-size:10px;font-weight:600;letter-spacing:.4px">PianoTune Pro v2.10.5</div>
+    <div style="color:rgba(255,255,255,.35);font-size:10px;font-weight:600;letter-spacing:.4px">PianoTune Pro v2.11.0</div>
   </div>
 </div>
 
@@ -536,6 +536,7 @@ function defaultState(){
       {id:4,nombre:'Aceite de mecánica',precio:90,stock:12,proveedor:'Distribuidora MX'},
     ],
     presupuestos:[],
+    prospectos:[],
     sesionActiva:null,
     kmTotal:0,
     googleUser:null,
@@ -564,6 +565,7 @@ function migrate(s){
   });
   s.citas.forEach(c=>{if(!c.pianoId)c.pianoId=null;if(!c.duracionH)c.duracionH=c.duracion?+(c.duracion/60).toFixed(1):1.5;});
   if(!s.kmTotal)s.kmTotal=0;
+  if(!s.prospectos)s.prospectos=[]; // v2.11 — Por contactar (Etapa A)
   if(!s.sesionActiva)s.sesionActiva=null;
   if(!s.googleUser)s.googleUser=null;
   if(!s.tecnico)s.tecnico={nombre:'Sergio Ruiz',whatsapp:'6691234567',foto:'',datosBancarios:'',constanciaFiscal:''};
@@ -634,7 +636,7 @@ let _syncTimer=null;
 let _syncStatus='idle'; // idle | syncing | ok | error
 
 // v2.9.9 — Confiabilidad: detección automática de cambios por snapshot
-const SYNC_COLS=['clientes','citas','presupuestos','productos','servicios','notas'];
+const SYNC_COLS=['clientes','citas','presupuestos','productos','servicios','notas','prospectos'];
 let _snap={};
 function _recJson(r){return JSON.stringify({...r,updatedAt:undefined});}
 function _snapshotAll(){_snap={};SYNC_COLS.forEach(col=>{_snap[col]={};(state[col]||[]).forEach(r=>{if(r&&r.id!=null)_snap[col][r.id]=_recJson(r);});});}
@@ -666,7 +668,7 @@ function mergeState(remote){
   if((remote._syncTs||0)>(state._syncTs||0)){
     Object.keys(remote).forEach(k=>{
       if(SYNC_COLS.includes(k))return;
-      if(['deleted','_syncTs','_hasPulled','_needsPush','nextId','catalogVersion'].includes(k))return;
+      if(['deleted','_syncTs','_hasPulled','_needsPush','_lastSyncAt','nextId','catalogVersion'].includes(k))return;
       state[k]=remote[k];
     });
   }
@@ -676,12 +678,20 @@ function mergeState(remote){
   state.deleted=Object.values(tomb).filter(t=>t.ts>cutoff);
 }
 async function fetchRemote(){
+  // v2.10.6 — distingue error de red (ok:false) vs nube vacía (ok:true,data:null)
   try{
     const res=await fetch(`${SCRIPT_URL}?secret=${SYNC_SECRET}&_=${Date.now()}`);
     const json=await res.json();
-    if(json.ok&&json.data&&json.data!=='{}')return JSON.parse(json.data);
-  }catch(err){console.warn('fetchRemote falló:',err);}
-  return null;
+    if(json.ok){
+      if(json.data&&json.data!=='{}')return {ok:true,data:JSON.parse(json.data)};
+      return {ok:true,data:null}; // nube vacía: seguro hacer push
+    }
+    console.warn('fetchRemote error del servidor:',json.error);
+    return {ok:false,data:null};
+  }catch(err){
+    console.warn('fetchRemote falló (red):',err);
+    return {ok:false,data:null};
+  }
 }
 async function forcePushAll(){
   // Forzar re-stamp de todos los registros con updatedAt = ahora
@@ -695,42 +705,86 @@ async function forcePushAll(){
   await pushToCloud();
   showToast('✅ Todos los datos enviados ✓');
 }
+let _syncBusy=false; // v2.10.6 — serializar pull/push concurrentes
 async function pushToCloud(){
+  if(_syncBusy){state._needsPush=true;try{localStorage.setItem(SK,JSON.stringify(state));}catch(e){}return;}
   if(!state._hasPulled){console.log('Push diferido: pull inicial primero');await pullFromCloud();return;}
+  _syncBusy=true;
   _syncStatus='syncing';updateSyncBar();
-  // Pull-antes-de-push: fusiona lo remoto para no pisar registros del otro dispositivo
-  const remote=await fetchRemote();
-  if(remote)mergeState(remote);
-  state._syncTs=Date.now();
-  _snapshotAll();
-  try{localStorage.setItem(SK,JSON.stringify(state));}catch(e){}
   try{
+    // Pull-antes-de-push: fusiona lo remoto para no pisar registros del otro dispositivo
+    const remote=await fetchRemote();
+    if(!remote.ok){
+      // v2.10.6 — ERROR de red: NO empujar a ciegas (sobreescribiría la nube sin fusionar)
+      state._needsPush=true;
+      try{localStorage.setItem(SK,JSON.stringify(state));}catch(e){}
+      _syncStatus='error';updateSyncBar();
+      console.warn('Push abortado: no se pudo leer la nube. Se reintentará.');
+      return;
+    }
+    if(remote.data)mergeState(remote.data);
+    state._syncTs=Date.now();
+    state._needsPush=false;
+    state._lastSyncAt=Date.now();
+    _snapshotAll();
+    try{localStorage.setItem(SK,JSON.stringify(state));}catch(e){}
     const res=await fetch(SCRIPT_URL,{method:'POST',headers:{'Content-Type':'text/plain'},
       body:JSON.stringify({secret:SYNC_SECRET,data:JSON.stringify(state),device:state.tecnico?.nombre||'dispositivo',ts:state._syncTs})});
     const json=await res.json();
     _syncStatus=json.ok?'ok':'error';
-    if(!json.ok)console.warn('Sync push:',json.error);
-  }catch(err){_syncStatus='error';console.warn('Sync push failed:',err);}
-  updateSyncBar();
+    if(!json.ok){
+      state._needsPush=true;
+      try{localStorage.setItem(SK,JSON.stringify(state));}catch(e){}
+      console.warn('Sync push:',json.error);
+    }
+  }catch(err){
+    _syncStatus='error';
+    state._needsPush=true;
+    try{localStorage.setItem(SK,JSON.stringify(state));}catch(e){}
+    console.warn('Sync push failed:',err);
+  }finally{
+    _syncBusy=false;
+    updateSyncBar();
+  }
 }
 async function pullFromCloud(){
+  if(_syncBusy)return;
+  _syncBusy=true;
   _syncStatus='syncing';updateSyncBar();
-  const remote=await fetchRemote();
-  if(remote){
-    const before=JSON.stringify(state);
-    mergeState(remote);
-    const changed=JSON.stringify(state)!==before;
-    recalcEstados();
+  try{
+    const remote=await fetchRemote();
+    if(!remote.ok){
+      // Error de red: no marcar _hasPulled si nunca se ha hecho pull con éxito
+      _syncStatus='error';updateSyncBar();
+      return;
+    }
+    if(remote.data){
+      const before=JSON.stringify(state);
+      mergeState(remote.data);
+      const changed=JSON.stringify(state)!==before;
+      recalcEstados();
+      _snapshotAll();
+      try{localStorage.setItem(SK,JSON.stringify(state));}catch(e){}
+      if(typeof currentScreen!=='undefined'&&!_modalAbierto())renderScreen(currentScreen);
+      if(changed)showToast('☁️ Datos sincronizados ✓');
+    }
+    state._hasPulled=true;
+    state._lastSyncAt=Date.now();
     _snapshotAll();
     try{localStorage.setItem(SK,JSON.stringify(state));}catch(e){}
-    if(typeof currentScreen!=='undefined')renderScreen(currentScreen);
-    if(changed)showToast('☁️ Datos sincronizados ✓');
+    _syncStatus='ok';
+  }finally{
+    _syncBusy=false;
+    updateSyncBar();
   }
-  state._hasPulled=true;
-  _snapshotAll();
-  try{localStorage.setItem(SK,JSON.stringify(state));}catch(e){}
-  _syncStatus='ok';
-  updateSyncBar();
+}
+function _lastSyncLabel(){
+  if(!state._lastSyncAt)return '';
+  const min=Math.floor((Date.now()-state._lastSyncAt)/60000);
+  if(min<1)return ' · ahora';
+  if(min<60)return ` · hace ${min} min`;
+  const h=Math.floor(min/60);
+  return ` · hace ${h}h`;
 }
 function updateSyncBar(){
   const el=document.getElementById('sync-bar');if(!el)return;
@@ -740,8 +794,10 @@ function updateSyncBar(){
     error:{i:'⚠️',t:'Sin conexión (local)',bg:'#fff3e0',c:'#e65100'}};
   const d=cfg[_syncStatus]||cfg.idle;
   el.style.background=d.bg;
-  el.innerHTML=`<span style="font-size:12px;font-weight:600;color:${d.c}">${d.i} ${d.t}</span>
+  el.innerHTML=`<span style="font-size:12px;font-weight:600;color:${d.c}">${d.i} ${d.t}${_syncStatus!=='syncing'?_lastSyncLabel():''}</span>
     <button class="btn btn-xs btn-ghost" style="margin-left:auto;font-size:11px" onclick="pullFromCloud()">↓ Actualizar</button>`;
+  const cfgSub=document.getElementById('sync-cfg-sub');
+  if(cfgSub)cfgSub.textContent=`${d.i} ${d.t}${_lastSyncLabel()}`;
   if(typeof dtUpdateSyncSide==='function')dtUpdateSyncSide();
 }
 function recalcEstados(){
@@ -782,6 +838,43 @@ const fmtDate=iso=>{const[y,m,d]=iso.split('-');return`${d}/${m}/${y}`;};
 const fmtMoney=n=>'$'+Number(n).toLocaleString('es-MX');
 const getCliente=id=>state.clientes.find(c=>c.id===id);
 const getPiano=(cId,pId)=>{const c=getCliente(cId);return c&&c.pianos.find(p=>p.id===pId);};
+// ── v2.11 (Etapa A) — Por contactar: helpers calculados (sin estado almacenado) ──
+// Reglas confirmadas: gracia = min(ciclo,12) meses · sin ciclo → durmiente a 12 meses del último servicio
+function _addMeses(fechaStr,meses){const d=new Date(fechaStr+'T00:00:00');d.setMonth(d.getMonth()+meses);return d;}
+function graciaMeses(piano){const c=piano.cicloMeses||0;return c>0?Math.min(c,12):0;}
+function esDurmiente(piano){
+  if(!piano||!piano.ultimoServicio)return false;
+  const hoy=new Date();hoy.setHours(0,0,0,0);
+  const c=piano.cicloMeses||0;
+  if(c>0){
+    // durmiente cuando pasó ciclo + gracia (gracia con tope de 12 meses)
+    return hoy>=_addMeses(piano.ultimoServicio,c+graciaMeses(piano));
+  }
+  // sin ciclo definido: durmiente a los 12 meses del último servicio
+  return hoy>=_addMeses(piano.ultimoServicio,12);
+}
+function esVencidaActiva(piano){
+  // dentro de la ventana de gracia: vencida pero aún accionable en agenda
+  if(!piano||!piano.ultimoServicio||!(piano.cicloMeses>0))return false;
+  const hoy=new Date();hoy.setHours(0,0,0,0);
+  const vence=_addMeses(piano.ultimoServicio,piano.cicloMeses);
+  const limite=_addMeses(piano.ultimoServicio,piano.cicloMeses+graciaMeses(piano));
+  return hoy>=vence&&hoy<limite;
+}
+function pianosDurmientes(){
+  // [{cliente, piano}] de todos los pianos durmientes
+  const out=[];
+  (state.clientes||[]).forEach(c=>(c.pianos||[]).forEach(p=>{if(esDurmiente(p))out.push({cliente:c,piano:p});}));
+  return out;
+}
+const _PRIORIDAD_ESTADO={'Crítico':0,'Necesita reparación':1,'Regular':2,'Bueno':3,'Excelente':4};
+function prioridadProspecto(p){
+  // menor = más prioritario: peor estado primero, luego cola antes que vertical
+  const e=_PRIORIDAD_ESTADO[p.pianoEstado]!==undefined?_PRIORIDAD_ESTADO[p.pianoEstado]:9;
+  const t=(p.pianoTipo==='Cola'||p.pianoTipo==='Grand')?0:1;
+  return e*10+t;
+}
+
 // ── v2.10 (cimientos) — Modelo de servicio en 3 ejes (derivado, compatible con estados viejos) ──
 function cobroTotal(c){
   if(c.cobro&&typeof c.cobro.total==='number'&&c.cobro.total>0)return c.cobro.total;
@@ -3290,7 +3383,7 @@ function renderConfig(){
   </div>
   <div class="credits-block">
     <div class="credits-logo">🎹</div>
-    <div class="credits-app">PianoTune Pro v2.10.5</div>
+    <div class="credits-app">PianoTune Pro v2.11.0</div>
     <div class="credits-dev">Desarrollado por Sergio L. Ruiz Jones</div>
     <div class="credits-co">Pianos and Pianos — Mazatlán, Sin.</div>
   </div>`;
@@ -5219,7 +5312,26 @@ setTimeout(()=>{
   checkRecurrenciasVencidas();
 },3000);
 // v2.8.1 — Pull inicial desde la nube
-setTimeout(pullFromCloud,2000);
+setTimeout(async()=>{
+  await pullFromCloud();
+  // v2.10.6 — recuperar push pendiente de una sesión anterior (app cerrada antes del debounce)
+  if(state._needsPush){console.log('Recuperando push pendiente...');pushToCloud();}
+},2000);
+// v2.10.6 — Pull al volver la app a primer plano + flush de push al ocultarse
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='visible'){
+    // Volvió al frente: traer cambios de otros dispositivos
+    pullFromCloud();
+  }else{
+    // Se va al fondo: si hay push agendado o pendiente, dispararlo YA
+    if(_syncTimer){clearTimeout(_syncTimer);_syncTimer=null;pushToCloud();}
+    else if(state._needsPush){pushToCloud();}
+  }
+});
+// v2.10.6 — Pull periódico cada 3 minutos mientras la app está visible
+setInterval(()=>{
+  if(document.visibilityState==='visible'&&!_modalAbierto())pullFromCloud();
+},180000);
 // v2.9.0 — Init desktop si aplica
 if(isDesktop()){
   initDesktop();
