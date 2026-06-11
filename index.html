@@ -301,7 +301,7 @@ textarea.input{resize:vertical;min-height:68px}
     ☁️ <span id="dt-sync-txt">Listo</span>
   </div>
   <div style="padding:10px 16px 14px">
-    <div style="color:rgba(255,255,255,.35);font-size:10px;font-weight:600;letter-spacing:.4px">PianoTune Pro v3.0.0</div>
+    <div style="color:rgba(255,255,255,.35);font-size:10px;font-weight:600;letter-spacing:.4px">PianoTune Pro v3.0.1</div>
   </div>
 </div>
 
@@ -740,30 +740,49 @@ async function fetchRemote(){
   }
 }
 // Escribe en Firestore SOLO los registros que cambiaron (por updatedAt vs snapshot) + tombstones
+// v3.0.1 — Firestore rechaza `undefined`; limpiar recursivamente (null sí se acepta)
+function _sanitizeForFs(val){
+  if(val===undefined)return null;
+  if(val===null||typeof val!=='object')return val;
+  if(Array.isArray(val))return val.map(_sanitizeForFs);
+  const out={};
+  for(const k in val){
+    if(val[k]===undefined)continue; // omitir claves undefined
+    out[k]=_sanitizeForFs(val[k]);
+  }
+  return out;
+}
 async function _pushChangedDocs(){
-  const batch=_db.batch();
-  let writes=0;
+  // Reunir todas las operaciones primero, luego ejecutarlas en lotes ≤450
+  const ops=[]; // {type:'set'|'delete', ref, data?}
   SYNC_COLS.forEach(col=>{
     const prev=_snap[col]||{};
     (state[col]||[]).forEach(r=>{
       if(!r||r.id==null)return;
       const j=_recJson(r);
-      // cambió si no estaba en snapshot o su JSON difiere
       if(prev[r.id]===undefined||prev[r.id]!==j){
-        batch.set(_db.collection(col).doc(String(r.id)),r,{merge:false});
-        writes++;
+        ops.push({type:'set',ref:_db.collection(col).doc(String(r.id)),data:_sanitizeForFs(r)});
       }
     });
   });
-  // Borrados: aplicar tombstones recientes como delete() en Firestore
   (state.deleted||[]).forEach(t=>{
     if(SYNC_COLS.includes(t.col)){
-      batch.delete(_db.collection(t.col).doc(String(t.id)));
-      writes++;
+      ops.push({type:'delete',ref:_db.collection(t.col).doc(String(t.id))});
     }
   });
-  // Meta doc (tombstones, escalares, tecnico)
-  batch.set(_db.collection('meta').doc('estado'),{
+  const writes=ops.length;
+  // Ejecutar en lotes de 450 (límite Firestore = 500)
+  const LOTE=450;
+  for(let i=0;i<ops.length;i+=LOTE){
+    const batch=_db.batch();
+    ops.slice(i,i+LOTE).forEach(o=>{
+      if(o.type==='delete')batch.delete(o.ref);
+      else batch.set(o.ref,o.data,{merge:false});
+    });
+    await batch.commit(); // si falla, el error sube con su .code real
+  }
+  // Meta doc por separado (siempre, aunque no haya cambios en colecciones)
+  await _db.collection('meta').doc('estado').set(_sanitizeForFs({
     deleted:state.deleted||[],
     _syncTs:state._syncTs||Date.now(),
     nextId:state.nextId||0,
@@ -772,9 +791,7 @@ async function _pushChangedDocs(){
     catalogVersion:state.catalogVersion||'',
     device:_deviceId(),
     ts:Date.now()
-  },{merge:true});
-  if(writes>0)await batch.commit();
-  else await _db.collection('meta').doc('estado').set({_syncTs:state._syncTs||Date.now(),device:_deviceId(),ts:Date.now()},{merge:true});
+  }),{merge:true});
   return writes;
 }
 async function forcePushAll(){
@@ -830,6 +847,18 @@ async function pullFromCloud(){
     const remote=await fetchRemote();
     if(!remote.ok){_syncStatus='error';updateSyncBar();return;}
     if(remote.data){
+      // v3.0.1 — Detectar nube vacía de colecciones: si remoto no trae registros
+      // pero local SÍ tiene, es el primer arranque → subir todo automáticamente.
+      const remotoVacio=SYNC_COLS.every(c=>!(remote.data[c]||[]).length);
+      const localTieneDatos=SYNC_COLS.some(c=>(state[c]||[]).length);
+      if(remotoVacio&&localTieneDatos){
+        console.log('Nube vacía + datos locales → push inicial completo');
+        _syncBusy=false; // liberar para que forcePushAll pueda correr
+        await forcePushAll();
+        _syncBusy=true;
+        startRealtimeSync();
+        return;
+      }
       const before=JSON.stringify(state);
       mergeState(remote.data);
       const changed=JSON.stringify(state)!==before;
@@ -843,7 +872,6 @@ async function pullFromCloud(){
     _snapshotAll();
     try{localStorage.setItem(SK,JSON.stringify(state));}catch(e){}
     _syncStatus='ok';
-    // Arrancar listeners de tiempo real (solo una vez)
     startRealtimeSync();
   }finally{_syncBusy=false;updateSyncBar();}
 }
@@ -3487,7 +3515,7 @@ function renderConfig(){
   </div>
   <div class="credits-block">
     <div class="credits-logo">🎹</div>
-    <div class="credits-app">PianoTune Pro v3.0.0</div>
+    <div class="credits-app">PianoTune Pro v3.0.1</div>
     <div class="credits-dev">Desarrollado por Sergio L. Ruiz Jones</div>
     <div class="credits-co">Pianos and Pianos — Mazatlán, Sin.</div>
   </div>`;
