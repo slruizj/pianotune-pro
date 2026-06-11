@@ -297,7 +297,7 @@ textarea.input{resize:vertical;min-height:68px}
     ☁️ <span id="dt-sync-txt">Listo</span>
   </div>
   <div style="padding:10px 16px 14px">
-    <div style="color:rgba(255,255,255,.35);font-size:10px;font-weight:600;letter-spacing:.4px">PianoTune Pro v2.11.0</div>
+    <div style="color:rgba(255,255,255,.35);font-size:10px;font-weight:600;letter-spacing:.4px">PianoTune Pro v2.11.1</div>
   </div>
 </div>
 
@@ -787,15 +787,17 @@ function _lastSyncLabel(){
   return ` · hace ${h}h`;
 }
 function updateSyncBar(){
-  const el=document.getElementById('sync-bar');if(!el)return;
   const cfg={idle:{i:'☁️',t:'Listo',bg:'var(--primary-light)',c:'var(--primary)'},
     syncing:{i:'🔄',t:'Sincronizando...',bg:'var(--warning-light)',c:'var(--warning)'},
     ok:{i:'✅',t:'Sincronizado',bg:'var(--success-light)',c:'var(--success)'},
     error:{i:'⚠️',t:'Sin conexión (local)',bg:'#fff3e0',c:'#e65100'}};
   const d=cfg[_syncStatus]||cfg.idle;
-  el.style.background=d.bg;
-  el.innerHTML=`<span style="font-size:12px;font-weight:600;color:${d.c}">${d.i} ${d.t}${_syncStatus!=='syncing'?_lastSyncLabel():''}</span>
+  // v2.11.1 — hay 2 elementos #sync-bar (topbar PC + dashboard móvil); actualizar TODOS
+  document.querySelectorAll('[id="sync-bar"]').forEach(el=>{
+    el.style.background=d.bg;
+    el.innerHTML=`<span style="font-size:12px;font-weight:600;color:${d.c}">${d.i} ${d.t}${_syncStatus!=='syncing'?_lastSyncLabel():''}</span>
     <button class="btn btn-xs btn-ghost" style="margin-left:auto;font-size:11px" onclick="pullFromCloud()">↓ Actualizar</button>`;
+  });
   const cfgSub=document.getElementById('sync-cfg-sub');
   if(cfgSub)cfgSub.textContent=`${d.i} ${d.t}${_lastSyncLabel()}`;
   if(typeof dtUpdateSyncSide==='function')dtUpdateSyncSide();
@@ -3383,7 +3385,7 @@ function renderConfig(){
   </div>
   <div class="credits-block">
     <div class="credits-logo">🎹</div>
-    <div class="credits-app">PianoTune Pro v2.11.0</div>
+    <div class="credits-app">PianoTune Pro v2.11.1</div>
     <div class="credits-dev">Desarrollado por Sergio L. Ruiz Jones</div>
     <div class="credits-co">Pianos and Pianos — Mazatlán, Sin.</div>
   </div>`;
