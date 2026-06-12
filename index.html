@@ -301,7 +301,7 @@ textarea.input{resize:vertical;min-height:68px}
     ☁️ <span id="dt-sync-txt">Listo</span>
   </div>
   <div style="padding:10px 16px 14px">
-    <div style="color:rgba(255,255,255,.35);font-size:10px;font-weight:600;letter-spacing:.4px">PianoTune Pro v3.3.0</div>
+    <div style="color:rgba(255,255,255,.35);font-size:10px;font-weight:600;letter-spacing:.4px">PianoTune Pro v3.3.2</div>
   </div>
 </div>
 
@@ -1556,8 +1556,8 @@ function terminarServicio(){
       state.kmTotal+=km*2;state.sesionActiva=null;
       if(cita&&cita.estado!=='realizado')cita.estado='realizado';
       saveState();showToast(`Finalizado. +${(km*2).toFixed(1)} km registrados ✓`);renderInicio();
-      if(cita)setTimeout(()=>marcarRealizado(cita.id),500);},
-    ()=>{state.sesionActiva=null;if(cita&&cita.estado!=='realizado')cita.estado='realizado';saveState();showToast('Servicio finalizado');renderInicio();if(cita)setTimeout(()=>marcarRealizado(cita.id),500);}
+      if(cita)setTimeout(()=>modalCerrarServicio(cita.id),500);},
+    ()=>{state.sesionActiva=null;saveState();showToast('Servicio finalizado');renderInicio();if(cita)setTimeout(()=>modalCerrarServicio(cita.id),500);}
   );
 }
 
@@ -2233,7 +2233,9 @@ function showModalDetalleCita(id){
       </div>`;
   const actionButtons=()=>{
     const op=opEstado(c);
-    if(op==='cancelada') return '';
+    if(op==='cancelada') return `
+      <button class="btn btn-ghost btn-full" style="margin-top:6px" onclick="abrirPDF_OS(${id})">Orden de servicio</button>
+      <button class="btn btn-danger btn-full" style="margin-top:8px" onclick="eliminarCitaConConfirm(${id})">Eliminar cita</button>`;
     if(op==='realizada'){
       const total=cobroTotal(c),pagado=montoPagado(c),saldo=saldoCita(c),fact=estaFacturada(c);
       const cli2=getCliente(c.clienteId);const esEmp=cli2&&cli2.tipoCliente==='empresarial';
@@ -2243,15 +2245,18 @@ function showModalDetalleCita(id){
         html+=`<button class="btn btn-success btn-full" onclick="modalRegistrarPago(${id})">${lbl}</button>`;
         if(!fact)html+=`<button class="btn ${esEmp?'btn-primary':'btn-ghost'} btn-full" style="margin-top:6px" onclick="modalFacturar(${id})">🧾 Emitir factura</button>`;
         html+=`<button class="btn btn-ghost btn-full" style="margin-top:6px" onclick="abrirPDF_OS(${id})">📝 Orden de servicio</button>`;
+        html+=`<button class="btn btn-ghost btn-full" style="margin-top:8px;color:var(--danger)" onclick="eliminarCitaConConfirm(${id})">🗑 Eliminar cita</button>`;
       }else{
         if(!fact){
           html+=`<button class="btn btn-success btn-full" onclick="modalFacturar(${id})">🧾 Emitir factura</button>`;
           html+=`<button class="btn btn-outline btn-full" style="margin-top:6px" onclick="abrirPDF_CP(${id})">🧾 Comprobante</button>`;
           html+=`<button class="btn btn-wa btn-full" style="margin-top:6px" onclick="enviarComprobantePorWA(${id})">💬 Enviar comprobante WA</button>`;
           html+=`<button class="btn btn-ghost btn-full" style="margin-top:6px;color:var(--text3)" onclick="cerrarSinFactura(${id})">Archivar sin factura</button>`;
+          html+=`<button class="btn btn-ghost btn-full" style="margin-top:8px;color:var(--danger)" onclick="eliminarCitaConConfirm(${id})">🗑 Eliminar cita</button>`;
         }else{
           html+=`<button class="btn btn-outline btn-full" onclick="abrirPDF_CP(${id})">🧾 Comprobante</button>`;
           html+=`<button class="btn btn-wa btn-full" style="margin-top:6px" onclick="enviarComprobantePorWA(${id})">💬 Enviar comprobante WA</button>`;
+          html+=`<button class="btn btn-ghost btn-full" style="margin-top:8px;color:var(--danger)" onclick="eliminarCitaConConfirm(${id})">Eliminar cita</button>`;
         }
       }
       return html;
@@ -2259,13 +2264,15 @@ function showModalDetalleCita(id){
     if(isSes) return `
       <button class="btn btn-success btn-full" onclick="terminarServicio()">✓ Finalizar y registrar km</button>
       <button class="btn btn-danger btn-full" style="margin-top:6px" onclick="cancelarSesion()">✕ Cancelar servicio en curso</button>
-      <button class="btn btn-outline btn-full" style="margin-top:6px" onclick="reagendarDesdeDetalle(${id})">📅 Reagendar / Cambiar fecha</button>`;
+      <button class="btn btn-outline btn-full" style="margin-top:6px" onclick="reagendarDesdeDetalle(${id})">📅 Reagendar / Cambiar fecha</button>
+      <button class="btn btn-ghost btn-full" style="margin-top:8px;color:var(--danger)" onclick="eliminarCitaConConfirm(${id})">🗑 Eliminar cita</button>`;
     return `
       <button class="btn btn-success btn-full" onclick="iniciarServicio(${id})">🔧 Iniciar servicio (GPS)</button>
-      <button class="btn btn-ghost btn-full" style="margin-top:6px" onclick="marcarRealizado(${id})">✓ Marcar realizado sin GPS</button>
+      <button class="btn btn-ghost btn-full" style="margin-top:6px" onclick="modalCerrarServicio(${id})">✓ Cerrar servicio sin GPS</button>
       <button class="btn btn-outline btn-full" style="margin-top:6px" onclick="reagendarDesdeDetalle(${id})">📅 Reagendar / Cambiar fecha</button>
       <button class="btn btn-success btn-full" style="margin-top:6px" onclick="modalRegistrarPago(${id})">💰 Anticipo / Pago previo</button>
-      <button class="btn btn-danger btn-full" style="margin-top:6px" onclick="cancelarCita(${id})">✕ Cancelar cita</button>`;
+      <button class="btn btn-danger btn-full" style="margin-top:6px" onclick="cancelarCita(${id})">✕ Cancelar cita</button>
+      <button class="btn btn-ghost btn-full" style="margin-top:8px;color:var(--danger)" onclick="eliminarCitaConConfirm(${id})">🗑 Eliminar cita</button>`;
   };
   openModal(`
   <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
@@ -2321,6 +2328,13 @@ function agendarProxima(citaId,meses){
   const orig=state.citas.find(x=>x.id===citaId);const nf=new Date(orig.fecha+'T00:00:00');nf.setMonth(nf.getMonth()+meses);
   state.citas.push({id:nextId(),clienteId:orig.clienteId,pianoId:orig.pianoId,fecha:nf.toISOString().split('T')[0],hora:orig.hora,estado:'pendiente',servicio:orig.servicio,duracionH:orig.duracionH||1.5,precio:orig.precio});
   saveState();closeModal();showToast(`Nueva cita en ${meses} meses ✓`);renderScreen(currentScreen);
+}
+function eliminarCitaConConfirm(id){
+  if(!confirm('Eliminar esta cita permanentemente? No se puede deshacer.'))return;
+  tombstone('citas',id);
+  state.citas=state.citas.filter(x=>x.id!==id);
+  saveState();closeModal();showToast('Cita eliminada ✓');
+  renderScreen(currentScreen);
 }
 function cancelarCita(id){if(!confirm('¿Cancelar esta cita?'))return;state.citas.find(x=>x.id===id).estado='cancelada';saveState();closeModal();showToast('Cita cancelada');renderScreen(currentScreen);}
 
@@ -2471,7 +2485,7 @@ function crearCita(){
   const durH=parseFloat(document.getElementById('nca-dh').value)||1.5;
   const presupuestoId=parseInt(document.getElementById('nca-presup')?.value)||null;
   const anticipo=Number(document.getElementById('nca-anticipo')?.value)||0;
-  const nuevaCita={id:nextId(),clienteId,pianoId,fecha,hora:document.getElementById('nca-h').value,estado:fd<hoy?'vencido':'pendiente',servicio:svc?svc.nombre:'Afinación',duracion:Math.round(durH*60),duracionH:durH,precio:Number(document.getElementById('nca-pr').value)||800,presupuestoId,anticipo,visitas:[],ordenServicio:{items:[],notas:'',fechaCierre:null},cobro:{monto:0,formaPago:'',fechaCobro:'',anticipo,notas:''},facturaInfo:{fechaFacturado:'',tipoFactura:''},recurrencia:{cicloMeses:0,servicioId:null,fechaSugerida:''}};
+  const nuevaCita={id:nextId(),clienteId,pianoId,fecha,hora:document.getElementById('nca-h').value,estado:fd<hoy?'vencido':'pendiente',servicio:svc?svc.nombre:'Afinación',duracion:Math.round(durH*60),duracionH:durH,precio:(()=>{const _p=Number(document.getElementById('nca-pr').value);return isNaN(_p)?0:_p;})(),presupuestoId,anticipo,visitas:[],ordenServicio:{items:[],notas:'',fechaCierre:null},cobro:{monto:0,formaPago:'',fechaCobro:'',anticipo,notas:''},facturaInfo:{fechaFacturado:'',tipoFactura:''},recurrencia:{cicloMeses:0,servicioId:null,fechaSugerida:''}};
   state.citas.push(nuevaCita);
   saveState();closeModal();showToast('Cita creada ✓');renderScreen(currentScreen);
 }
@@ -3813,7 +3827,7 @@ function renderConfig(){
   </div>
   <div class="credits-block">
     <div class="credits-logo">🎹</div>
-    <div class="credits-app">PianoTune Pro v3.3.0</div>
+    <div class="credits-app">PianoTune Pro v3.3.2</div>
     <div class="credits-dev">Desarrollado por Sergio L. Ruiz Jones</div>
     <div class="credits-co">Pianos and Pianos — Mazatlán, Sin.</div>
   </div>`;
@@ -4178,16 +4192,55 @@ function guardarPago(citaId){
   // Un pago/anticipo NO completa el servicio. El estado 'realizada' solo lo
   // establece el cierre (aplicarCierre/marcarRealizado/factura). Una cita
   // pendiente/vencida/en_curso conserva su estado operativo aunque reciba anticipo.
-  saveState();closeModal();
+  saveState();
   const saldo=saldoCita(c);
   if(opEstado(c)==='realizada'){
     showToast(saldo>0?`Anticipo ✓ · Saldo ${fmtMoney(saldo)}`:'Pago completo ✓');
+    const ciclo=(c.recurrencia&&c.recurrencia.cicloMeses)||0;
+    if(saldo<=0&&ciclo===0){
+      closeModal();
+      setTimeout(()=>{
+        openModal(`<div class="modal-title">Recurrencia?</div>
+        <p style="font-size:14px;color:var(--text2);margin-bottom:14px">Pago completo. No se definio ciclo de visita. Cada cuanto regresas?</p>
+        <select class="input select" id="post-ciclo" style="margin-bottom:14px">
+          <option value="0">Sin recurrencia</option>
+          <option value="3">Cada 3 meses</option>
+          <option value="6" selected>Cada 6 meses</option>
+          <option value="12">Cada 12 meses</option>
+          <option value="18">Cada 18 meses</option>
+          <option value="24">Cada 24 meses</option>
+        </select>
+        <button class="btn btn-primary btn-full" onclick="_guardarCicloPost(${citaId})">Guardar y cerrar</button>
+        <button class="btn btn-ghost btn-full" style="margin-top:8px" onclick="closeModal();renderInicio()">Sin recurrencia</button>`);
+      },300);
+      return;
+    }
+    closeModal();
+    if(saldo<=0){renderScreen(currentScreen);}else{setTimeout(()=>showModalDetalleCita(citaId),300);}
   }else{
     showToast(`Anticipo registrado ✓ · ${fmtMoney(monto)} · servicio aún por realizar`);
+    closeModal();renderInicio();
   }
-  renderInicio();
 }
 
+function _guardarCicloPost(citaId){
+  const c=state.citas.find(x=>x.id===citaId);if(!c)return;
+  const ciclo=parseInt(document.getElementById('post-ciclo')?.value)||0;
+  if(ciclo>0){
+    if(!c.recurrencia)c.recurrencia={};
+    c.recurrencia.cicloMeses=ciclo;
+    const piano=getPiano(c.clienteId,c.pianoId);
+    if(piano){
+      piano.cicloMeses=ciclo;
+      const hoy=new Date().toISOString().split('T')[0];
+      piano.ultimoServicio=hoy;
+      const prox=new Date(hoy+'T00:00:00');prox.setMonth(prox.getMonth()+ciclo);
+      piano.proximoServicio=prox.toISOString().split('T')[0];
+    }
+    saveState();showToast(`Ciclo de ${ciclo} meses guardado ✓`);
+  }
+  closeModal();renderInicio();
+}
 // ── Depositar efectivo ──
 function modalDepositar(citaId){
   const c=state.citas.find(x=>x.id===citaId);if(!c)return;
@@ -4252,8 +4305,10 @@ function confirmarFacturado(citaId){
     folio:document.getElementById('fa-folio').value.trim()};
   c.facturaInfo={fechaFacturado:c.factura.fecha,tipoFactura:c.factura.receptor};
   if(opEstado(c)!=='realizada')c.estado='realizada';
-  saveState();closeModal();showToast('Factura registrada ✓');renderInicio();
+  saveState();closeModal();showToast('Factura registrada ✓');
+  setTimeout(()=>showModalDetalleCita(citaId),300);
 }
+
 function cerrarSinFactura(citaId){
   if(!confirm('¿Cerrar sin emitir factura? Quedará archivada como pagada sin factura.'))return;
   const c=state.citas.find(x=>x.id===citaId);if(!c)return;
