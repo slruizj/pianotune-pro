@@ -4361,6 +4361,30 @@ function aplicarCierre(c,cicloMeses){
       const prox=new Date(hoy+'T00:00:00');prox.setMonth(prox.getMonth()+cicloMeses);
       piano.proximoServicio=prox.toISOString().split('T')[0];}
   }
+  // Crear la cita de recurrencia real en el calendario (antes solo quedaba
+  // como metadata en el piano y nunca aparecía al buscar en el calendario)
+  if(cicloMeses>0){
+    const nueva=crearCitaRecurrente(c,cicloMeses,hoy);
+    if(nueva)c.recurrencia.servicioId=nueva.id;
+  }
+}
+// Crea (o reutiliza si ya existe) la próxima cita pendiente a partir de una
+// cita cerrada, para que la recurrencia sea visible de verdad en el calendario.
+// baseFecha es opcional (por defecto hoy) para que ambas pantallas de
+// confirmación de recurrencia calculen la misma fecha y no dupliquen la cita.
+function crearCitaRecurrente(orig,cicloMeses,baseFecha){
+  if(!orig||!(cicloMeses>0))return null;
+  const base=baseFecha||new Date().toISOString().split('T')[0];
+  const nf=new Date(base+'T00:00:00');nf.setMonth(nf.getMonth()+cicloMeses);
+  const fecha=nf.toISOString().split('T')[0];
+  // Evita duplicar si ya se generó una cita pendiente para la misma fecha
+  // (p.ej. si se confirma recurrencia tanto en la primera como en la
+  // segunda pantalla "por seguridad").
+  const existente=state.citas.find(x=>x.clienteId===orig.clienteId&&x.pianoId===orig.pianoId&&x.fecha===fecha&&x.estado==='pendiente'&&x.id!==orig.id);
+  if(existente)return existente;
+  const nueva={id:nextId(),clienteId:orig.clienteId,pianoId:orig.pianoId,fecha,hora:orig.hora||'10:00',estado:'pendiente',servicio:orig.servicio,duracionH:orig.duracionH||1.5,precio:orig.precio,origenCitaId:orig.id,cicloMeses};
+  state.citas.push(nueva);
+  return nueva;
 }
 
 // ── Registrar pago ──
@@ -4441,15 +4465,19 @@ function _guardarCicloPost(citaId){
   if(ciclo>0){
     if(!c.recurrencia)c.recurrencia={};
     c.recurrencia.cicloMeses=ciclo;
+    const hoy=new Date().toISOString().split('T')[0];
     const piano=getPiano(c.clienteId,c.pianoId);
     if(piano){
       piano.cicloMeses=ciclo;
-      const hoy=new Date().toISOString().split('T')[0];
       piano.ultimoServicio=hoy;
       const prox=new Date(hoy+'T00:00:00');prox.setMonth(prox.getMonth()+ciclo);
       piano.proximoServicio=prox.toISOString().split('T')[0];
     }
-    saveState();showToast(`Ciclo de ${ciclo} meses guardado ✓`);
+    // Genera también la cita real en el calendario (antes esta pantalla
+    // "de seguridad" solo guardaba el ciclo en el piano y nunca creaba la cita).
+    const nueva=crearCitaRecurrente(c,ciclo,hoy);
+    if(nueva)c.recurrencia.servicioId=nueva.id;
+    saveState();showToast(`Ciclo de ${ciclo} meses guardado · Cita agendada ✓`);
   }
   closeModal();renderInicio();
 }
