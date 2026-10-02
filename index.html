@@ -301,7 +301,7 @@ textarea.input{resize:vertical;min-height:68px}
     ☁️ <span id="dt-sync-txt">Listo</span>
   </div>
   <div style="padding:10px 16px 14px">
-    <div style="color:rgba(255,255,255,.35);font-size:10px;font-weight:600;letter-spacing:.4px">PianoTune Pro v3.7.0</div>
+    <div style="color:rgba(255,255,255,.35);font-size:10px;font-weight:600;letter-spacing:.4px">PianoTune Pro v3.7.1</div>
   </div>
 </div>
 
@@ -575,6 +575,7 @@ function migrate(s){
   });
   s.citas.forEach(c=>{if(!c.pianoId)c.pianoId=null;if(!c.duracionH)c.duracionH=c.duracion?+(c.duracion/60).toFixed(1):1.5;});
   if(!s.kmTotal)s.kmTotal=0;
+  if(s.kmHistorico==null)s.kmHistorico=s.kmTotal||0; // v3.7.1 — total anterior se conserva como histórico
   if(!s.prospectos)s.prospectos=[]; // v2.11 — Por contactar (Etapa A)
   if(!s.ordenesCuerdas)s.ordenesCuerdas=[];         // v3.6.0 — módulo de cuerdas
   if(!s.lotesAlambre)s.lotesAlambre=[];
@@ -705,17 +706,68 @@ function _deviceId(){
 }
 
 // v2.9.9 — Confiabilidad: detección automática de cambios por snapshot
+// v3.7.1 — _snap = huella (hash) de lo último visto por registro; _pend = lista PERSISTENTE de
+// pendientes por subir (col → {id:1}). Solo se limpia tras un push exitoso, así una edición
+// sin internet o en los 5 s de espera ya no se "absorbe" al recibir datos de la nube.
 const SYNC_COLS=['clientes','citas','presupuestos','productos','servicios','notas','prospectos','ordenesCuerdas','lotesAlambre','combinacionesCobre']; // v3.6.0 — + módulo de cuerdas
 let _snap={};
-function _recJson(r){return JSON.stringify({...r,updatedAt:undefined});}
-function _snapshotAll(){_snap={};SYNC_COLS.forEach(col=>{_snap[col]={};(state[col]||[]).forEach(r=>{if(r&&r.id!=null)_snap[col][r.id]=_recJson(r);});});}
-function _stampChanges(){const now=Date.now();SYNC_COLS.forEach(col=>{const prev=_snap[col]||{};(state[col]||[]).forEach(r=>{if(!r||r.id==null)return;const j=_recJson(r);const pj=prev[r.id];if(pj===undefined){if(!r.updatedAt)r.updatedAt=now;}else if(pj!==j){r.updatedAt=now;}});});/* v3.0.2 — NO actualizar snapshot aquí; solo tras push exitoso */}
-function tombstone(col,id){state.deleted=state.deleted||[];state.deleted=state.deleted.filter(t=>!(t.col===col&&t.id===id));state.deleted.push({col,id,ts:Date.now()});}
+let _pend=(()=>{try{const p=JSON.parse(localStorage.getItem('ptp_pend')||'null');if(p&&typeof p==='object')return p;}catch(e){}return {};})();
+function _savePend(){try{localStorage.setItem('ptp_pend',JSON.stringify(_pend));}catch(e){}}
+function _markPend(col,id){(_pend[col]||(_pend[col]={}))[String(id)]=1;}
+function _unpend(col,id){if(_pend[col])delete _pend[col][String(id)];}
+function _pendCount(){let n=0;Object.keys(_pend).forEach(c=>{n+=Object.keys(_pend[c]||{}).length;});return n;}
+function _markAllPend(){SYNC_COLS.forEach(col=>(state[col]||[]).forEach(r=>{if(r&&r.id!=null)_markPend(col,r.id);}));_savePend();}
+// Huella canónica: claves ordenadas (Firestore no respeta el orden), sin updatedAt ni fotos
+// (las fotos viven solo en este dispositivo y nunca suben).
+function _canon(v){
+  if(v===null||v===undefined||typeof v!=='object'){const s=JSON.stringify(v);return s===undefined?'null':s;}
+  if(Array.isArray(v)){if(v.length&&typeof v[0]==='string'&&v[0].startsWith('data:image'))return '[]';return '['+v.map(_canon).join(',')+']';}
+  return '{'+Object.keys(v).filter(k=>v[k]!==undefined&&typeof v[k]!=='function'&&k!=='updatedAt'&&k!=='fotos').sort().map(k=>JSON.stringify(k)+':'+_canon(v[k])).join(',')+'}';
+}
+function _recJson(r){return _canon(r);}
+function _hashRec(r){const s=_canon(r);let h=5381;for(let i=0;i<s.length;i++)h=((h<<5)+h+s.charCodeAt(i))|0;return (h>>>0).toString(36)+'.'+s.length;}
+function _snapshotRec(col,r){(_snap[col]||(_snap[col]={}))[String(r.id)]=_hashRec(r);}
+function _snapshotAll(){_snap={};SYNC_COLS.forEach(col=>{_snap[col]={};(state[col]||[]).forEach(r=>{if(r&&r.id!=null)_snap[col][String(r.id)]=_hashRec(r);});});}
+function _stampChanges(){
+  const now=Date.now();let hubo=false;
+  SYNC_COLS.forEach(col=>{const prev=_snap[col]||(_snap[col]={});(state[col]||[]).forEach(r=>{
+    if(!r||r.id==null)return;const k=String(r.id);const h=_hashRec(r);
+    if(prev[k]!==h){if(prev[k]!==undefined||!r.updatedAt)r.updatedAt=now;prev[k]=h;_markPend(col,r.id);hubo=true;}
+  });});
+  if(hubo)_savePend();
+}
+// Rescate de fotos: la nube siempre trae fotos:[]; conservar las locales en cualquier nivel
+function _conFotosLocales(loc,rem){
+  if(Array.isArray(rem)){
+    if(!Array.isArray(loc))return rem;
+    return rem.map((x,i)=>{const l=(x&&typeof x==='object'&&x.id!=null)?loc.find(y=>y&&y.id===x.id):loc[i];return _conFotosLocales(l,x);});
+  }
+  if(rem&&typeof rem==='object'){
+    if(!loc||typeof loc!=='object'||Array.isArray(loc))return rem;
+    const out={};
+    for(const k in rem){
+      const lv=loc[k],rv=rem[k];
+      const esFotos=Array.isArray(lv)&&lv.length&&(k==='fotos'||(typeof lv[0]==='string'&&lv[0].startsWith('data:image')));
+      out[k]=(esFotos&&Array.isArray(rv)&&!rv.length)?lv:_conFotosLocales(lv,rv);
+    }
+    return out;
+  }
+  return rem;
+}
+function tombstone(col,id){state.deleted=state.deleted||[];state.deleted=state.deleted.filter(t=>!(t.col===col&&t.id===id));state.deleted.push({col,id,ts:Date.now()});_markPend('_del',col+'\u0001'+id);_savePend();}
 function saveState(){
   _stampChanges();
   try{localStorage.setItem(SK,JSON.stringify(state));}catch(e){}
   clearTimeout(_syncTimer);
   _syncTimer=setTimeout(pushToCloud,5000);
+}
+// v3.7.1 — cuerdasConfig: fusión por campo con sello de tiempo (_ts)
+function _mergeCfgCampos(loc,rem){
+  loc=loc||{};rem=rem||{};
+  const lt=loc._ts||{},rt=rem._ts||{};const out={...loc},ts={...lt};
+  Object.keys(rem).forEach(k=>{if(k==='_ts')return;
+    if(!(k in loc)||(rt[k]||0)>(lt[k]||0)){out[k]=rem[k];if(rt[k])ts[k]=rt[k];}});
+  out._ts=ts;return out;
 }
 // v2.9.9 — Merge por registro: "última actualización gana" por registro, no por blob
 function mergeState(remote){
@@ -726,38 +778,37 @@ function mergeState(remote){
   const tomb={};
   [...(state.deleted||[]),...(remote.deleted||[])].forEach(t=>{const k=t.col+':'+t.id;if(!tomb[k]||t.ts>tomb[k].ts)tomb[k]=t;});
   const tombTs=(col,id)=>{const t=tomb[col+':'+id];return t?t.ts:0;};
-  // Por colección: unir por id, gana updatedAt mayor; tombstone más nuevo elimina
+  // Por colección: unir por id, gana updatedAt mayor; tombstone más nuevo elimina.
+  // v3.7.1 — lo local que es más nuevo o no existe en la nube queda PENDIENTE de subir.
   SYNC_COLS.forEach(col=>{
-    const byId={};
+    const byId={};const enNube=new Set();
     (state[col]||[]).forEach(r=>{if(r&&r.id!=null)byId[r.id]=r;});
     (remote[col]||[]).forEach(r=>{
       if(!r||r.id==null)return;
+      enNube.add(String(r.id));
       const ex=byId[r.id];
-      if(!ex||(r.updatedAt||0)>(ex.updatedAt||0)){
-        // Preservar fotos locales (el remoto siempre llega con fotos:[])
-        if(ex&&col==='clientes'&&Array.isArray(ex.pianos)&&Array.isArray(r.pianos)){
-          const merged={...r,pianos:r.pianos.map(rp=>{
-            const lp=ex.pianos.find(p=>p.id===rp.id);
-            return (lp&&Array.isArray(lp.fotos)&&lp.fotos.length&&(!rp.fotos||!rp.fotos.length))?{...rp,fotos:lp.fotos}:rp;
-          })};
-          byId[r.id]=merged;
-        }else{byId[r.id]=r;}
-      }
+      if(!ex){byId[r.id]=r;_snapshotRec(col,r);_unpend(col,r.id);return;}
+      const hl=_hashRec(ex),hr=_hashRec(r);
+      if(hl===hr){_unpend(col,r.id);(_snap[col]||(_snap[col]={}))[String(r.id)]=hl;return;}
+      if((r.updatedAt||0)>(ex.updatedAt||0)){
+        byId[r.id]=_conFotosLocales(ex,r);
+        (_snap[col]||(_snap[col]={}))[String(r.id)]=hr;_unpend(col,r.id);
+      }else{_markPend(col,r.id);}
     });
-    state[col]=Object.values(byId).filter(r=>{const tt=tombTs(col,r.id);return !(tt&&tt>=(r.updatedAt||0));});
+    Object.values(byId).forEach(r=>{if(!enNube.has(String(r.id))&&!tombTs(col,r.id))_markPend(col,r.id);});
+    state[col]=Object.values(byId).filter(r=>{
+      const tt=tombTs(col,r.id);const fuera=!!(tt&&tt>=(r.updatedAt||0));
+      if(fuera){_unpend(col,r.id);if(_snap[col])delete _snap[col][String(r.id)];}
+      return !fuera;
+    });
   });
-  // Config y escalares: gana el blob más reciente por _syncTs (rara vez chocan)
-  if((remote._syncTs||0)>(state._syncTs||0)){
-    Object.keys(remote).forEach(k=>{
-      if(SYNC_COLS.includes(k))return;
-      if(['deleted','_syncTs','_hasPulled','_needsPush','_lastSyncAt','nextId','catalogVersion'].includes(k))return;
-      state[k]=remote[k];
-    });
-  }
+  // Config compartida: solo cuerdasConfig (por campo). El perfil del técnico y los km ya no viajan en meta.
+  if(remote.cuerdasConfig)state.cuerdasConfig=_mergeCfgCampos(state.cuerdasConfig,remote.cuerdasConfig);
   state.nextId=Math.max(state.nextId||0,remote.nextId||0);
   // Conservar tombstones fusionados, podar > 90 días
   const cutoff=Date.now()-90*864e5;
   state.deleted=Object.values(tomb).filter(t=>t.ts>cutoff);
+  _savePend();
 }
 // v3.0 — Firestore: mapeo state[] ↔ colecciones. Cada array es una colección; cada registro un doc por id.
 const _FS_META={tecnico:'tecnico',prefs:'prefs',deleted:'deleted'};
@@ -779,9 +830,8 @@ async function fetchRemote(){
       remote.deleted=m.deleted||[];
       remote._syncTs=m._syncTs||0;
       remote.nextId=m.nextId||0;
-      if(m.tecnico)remote.tecnico=m.tecnico;
-      if(m.kmTotal!=null)remote.kmTotal=m.kmTotal;
-      if(m.cuerdasConfig)remote.cuerdasConfig=m.cuerdasConfig; // v3.6.0
+      // v3.7.1 — tecnico (perfil) y kmTotal ya no se leen de la nube: son de cada dispositivo / se calculan
+      if(m.cuerdasConfig)remote.cuerdasConfig=m.cuerdasConfig; // v3.6.0 · fusión por campo
       if(m.catalogVersion)remote.catalogVersion=m.catalogVersion;
     }
     return {ok:true,data:remote};
@@ -809,23 +859,22 @@ function _sanitizeForFs(val){
   return out;
 }
 async function _pushChangedDocs(){
-  // Reunir todas las operaciones primero, luego ejecutarlas en lotes ≤450
-  const ops=[]; // {type:'set'|'delete', ref, data?}
+  // v3.7.1 — sube solo lo que está en la lista persistente de pendientes (+ borrados pendientes)
+  _stampChanges();
+  const ops=[];const enviados=[];
   SYNC_COLS.forEach(col=>{
-    const prev=_snap[col]||{};
-    (state[col]||[]).forEach(r=>{
-      if(!r||r.id==null)return;
-      const j=_recJson(r);
-      if(prev[r.id]===undefined||prev[r.id]!==j){
-        ops.push({type:'set',ref:_db.collection(col).doc(String(r.id)),data:_sanitizeForFs(r)});
-      }
+    const p=_pend[col];if(!p)return;
+    const byId={};(state[col]||[]).forEach(r=>{if(r&&r.id!=null)byId[String(r.id)]=r;});
+    Object.keys(p).forEach(k=>{
+      const r=byId[k];
+      if(!r){delete p[k];return;} // ya no existe localmente: lo cubre el tombstone
+      ops.push({type:'set',ref:_db.collection(col).doc(String(r.id)),data:_sanitizeForFs(r)});
+      enviados.push([col,k,_hashRec(r)]);
     });
   });
-  (state.deleted||[]).forEach(t=>{
-    if(SYNC_COLS.includes(t.col)){
-      ops.push({type:'delete',ref:_db.collection(t.col).doc(String(t.id))});
-    }
-  });
+  const borr=Object.keys(_pend._del||{});
+  borr.forEach(k=>{const i=k.indexOf('\u0001');const col=k.slice(0,i),id=k.slice(i+1);
+    if(SYNC_COLS.includes(col))ops.push({type:'delete',ref:_db.collection(col).doc(String(id))});});
   const writes=ops.length;
   // Ejecutar en lotes de 450 (límite Firestore = 500)
   const LOTE=450;
@@ -837,18 +886,30 @@ async function _pushChangedDocs(){
     });
     await batch.commit(); // si falla, el error sube con su .code real
   }
-  // Meta doc por separado (siempre, aunque no haya cambios en colecciones)
-  await _db.collection('meta').doc('estado').set(_sanitizeForFs({
-    deleted:state.deleted||[],
-    _syncTs:state._syncTs||Date.now(),
-    nextId:state.nextId||0,
-    kmTotal:state.kmTotal||0,
-    cuerdasConfig:state.cuerdasConfig||{}, // v3.6.0
-    tecnico:state.tecnico||{},
+  // Éxito: quitar de pendientes lo enviado, salvo lo que se volvió a editar mientras subía
+  enviados.forEach(([col,k,h])=>{const r=(state[col]||[]).find(x=>x&&String(x.id)===k);if(!r||_hashRec(r)===h)_unpend(col,k);});
+  borr.forEach(k=>{if(_pend._del)delete _pend._del[k];});
+  const metaPend=!!(_pend._meta&&Object.keys(_pend._meta).length);
+  _savePend();
+  if(!writes&&!metaPend)return 0; // nada que subir: no gastar lecturas/escrituras en meta
+  // Meta doc: leer la nube primero para no pisar borrados ni ajustes hechos en otro dispositivo
+  const metaRef=_db.collection('meta').doc('estado');
+  let m={};try{const d=await metaRef.get();if(d.exists)m=d.data()||{};}catch(e){}
+  const tomb={};[...(m.deleted||[]),...(state.deleted||[])].forEach(t=>{if(!t)return;const k=t.col+':'+t.id;if(!tomb[k]||t.ts>tomb[k].ts)tomb[k]=t;});
+  const cutoff=Date.now()-90*864e5;
+  state.deleted=Object.values(tomb).filter(t=>t.ts>cutoff);
+  if(m.cuerdasConfig)state.cuerdasConfig=_mergeCfgCampos(state.cuerdasConfig,m.cuerdasConfig);
+  const FV=firebase.firestore.FieldValue;
+  await metaRef.set({..._sanitizeForFs({
+    deleted:state.deleted,
+    _syncTs:Date.now(),
+    nextId:Math.max(state.nextId||0,m.nextId||0),
+    cuerdasConfig:state.cuerdasConfig||{}, // v3.6.0 · v3.7.1 por campo
     catalogVersion:state.catalogVersion||'',
     device:_deviceId(),
     ts:Date.now()
-  }),{merge:true});
+  }),tecnico:FV.delete(),kmTotal:FV.delete()},{merge:true}); // v3.7.1 — perfil y km ya no viven en la nube
+  delete _pend._meta;_savePend();
   return writes;
 }
 // TEMP v3.2 — Reset total + carga de catálogo limpio (quitar tras limpieza)
@@ -885,7 +946,7 @@ async function resetYCargarCatalogo(){
     state.combinacionesCobre=[];
     state.deleted=[];
     state.sesionActiva=null;
-    state.kmTotal=0;
+    state.kmTotal=0;state.kmHistorico=0;
     state.servicios=CATALOGO_LIMPIO.servicios.map(s=>({...s,updatedAt:now}));
     state.productos=CATALOGO_LIMPIO.productos.map(p=>({...p,updatedAt:now}));
     state._syncTs=now;
@@ -893,10 +954,9 @@ async function resetYCargarCatalogo(){
     state._hasPulled=true;
     try{localStorage.setItem(SK,JSON.stringify(state));}catch(e){}
     // 3. Subir el catálogo limpio a Firestore
-    _snap={}; // forzar que todo se vea como nuevo
+    _snapshotAll();_pend={};_markAllPend(); // forzar que todo se suba
     showToast('📤 Cargando catálogo limpio...');
     await _pushChangedDocs();
-    _snapshotAll();
     state._lastSyncAt=Date.now();state._needsPush=false;
     try{localStorage.setItem(SK,JSON.stringify(state));}catch(e){}
     _syncStatus='ok';
@@ -936,14 +996,13 @@ async function forcePushAll(){
   SYNC_COLS.forEach(col=>(state[col]||[]).forEach(r=>{if(r&&r.id!=null)r.updatedAt=now;}));
   state._hasPulled=true;state._syncTs=now;
   try{localStorage.setItem(SK,JSON.stringify(state));}catch(e){}
-  // forzar que _pushChangedDocs vea todo como cambiado
-  _snap={};
+  // forzar que _pushChangedDocs suba todo
+  _snapshotAll();_markAllPend();
   showToast('📤 Enviando todos los datos...');
   _syncBusy=true;_syncStatus='syncing';updateSyncBar();
   try{
     const n=await _pushChangedDocs();
-    _snapshotAll();
-    state._lastSyncAt=Date.now();state._needsPush=false;
+    state._lastSyncAt=Date.now();state._needsPush=_pendCount()>0;
     try{localStorage.setItem(SK,JSON.stringify(state));}catch(e){}
     _syncStatus='ok';
     showToast(`✅ ${n} registros enviados ✓`);
@@ -956,15 +1015,14 @@ async function forcePushAll(){
 }
 let _syncBusy=false; // serializar pull/push concurrentes
 async function pushToCloud(){
-  if(_syncBusy){state._needsPush=true;try{localStorage.setItem(SK,JSON.stringify(state));}catch(e){}return false;}
+  if(_syncBusy){state._needsPush=true;try{localStorage.setItem(SK,JSON.stringify(state));}catch(e){}clearTimeout(_syncTimer);_syncTimer=setTimeout(pushToCloud,3000);return false;}
   if(!initFirebase()){_syncStatus='error';updateSyncBar();return false;}
   try{await ensureAuth();}catch(e){_syncStatus='error';updateSyncBar();return false;}
   if(!state._hasPulled){await pullFromCloud();}
   _syncBusy=true;_syncStatus='syncing';updateSyncBar();
   try{
     const n=await _pushChangedDocs();
-    state._syncTs=Date.now();state._needsPush=false;state._lastSyncAt=Date.now();
-    _snapshotAll();
+    state._syncTs=Date.now();state._needsPush=_pendCount()>0;state._lastSyncAt=Date.now();
     try{localStorage.setItem(SK,JSON.stringify(state));}catch(e){}
     _syncStatus='ok';updateSyncBar();
     return true;
@@ -997,46 +1055,57 @@ async function pullFromCloud(){
         startRealtimeSync();
         return;
       }
+      _stampChanges(); // registrar ediciones locales aún no selladas antes de fusionar
       const before=JSON.stringify(state);
       mergeState(remote.data);
       const changed=JSON.stringify(state)!==before;
       recalcEstados();
-      _snapshotAll();
       try{localStorage.setItem(SK,JSON.stringify(state));}catch(e){}
       if(typeof currentScreen!=='undefined'&&!_modalAbierto())renderScreen(currentScreen);
       if(changed)showToast('☁️ Datos sincronizados ✓');
     }
     state._hasPulled=true;state._lastSyncAt=Date.now();
-    _snapshotAll();
     try{localStorage.setItem(SK,JSON.stringify(state));}catch(e){}
     _syncStatus='ok';
     startRealtimeSync();
-  }finally{_syncBusy=false;updateSyncBar();}
+  }finally{
+    _syncBusy=false;updateSyncBar();
+    // v3.7.1 — si quedó algo local sin subir (offline, debounce o más nuevo que la nube), subirlo
+    if(_pendCount()&&state._hasPulled){clearTimeout(_syncTimer);_syncTimer=setTimeout(pushToCloud,1500);}
+  }
 }
 // v3.0 — Tiempo real: escucha cambios en cada colección y los integra al vuelo
 function startRealtimeSync(){
   if(_fsUnsub.length||!_fbReady)return; // ya activo
   SYNC_COLS.forEach(col=>{
     const unsub=_db.collection(col).onSnapshot({includeMetadataChanges:false},snap=>{
-      // Ignorar los cambios que provienen de nuestra propia escritura local
-      if(snap.metadata.hasPendingWrites)return;
+      // v3.7.1 — procesar cada documento; saltar solo los que son nuestra propia escritura pendiente
+      _stampChanges(); // que ninguna edición local quede sin marcar antes de integrar lo remoto
       let huboCambio=false;
       snap.docChanges().forEach(ch=>{
+        if(ch.doc.metadata&&ch.doc.metadata.hasPendingWrites)return;
         const r=ch.doc.data();
         if(r==null||r.id==null)return;
         const arr=state[col]||(state[col]=[]);
         const idx=arr.findIndex(x=>x&&String(x.id)===String(r.id));
+        const k=String(r.id);
         if(ch.type==='removed'){
           if(idx>=0){arr.splice(idx,1);huboCambio=true;}
-        }else{
-          if(idx>=0){
-            if((r.updatedAt||0)>=(arr[idx].updatedAt||0)){arr[idx]=r;huboCambio=true;}
-          }else{arr.push(r);huboCambio=true;}
+          _unpend(col,k);if(_snap[col])delete _snap[col][k];
+          return;
         }
+        if(idx<0){arr.push(r);_snapshotRec(col,r);_unpend(col,k);huboCambio=true;return;}
+        const loc=arr[idx];
+        const hl=_hashRec(loc),hr=_hashRec(r);
+        if(hl===hr){_unpend(col,k);return;} // ya estaba igual (p.ej. eco de nuestra subida)
+        if((r.updatedAt||0)>(loc.updatedAt||0)){
+          arr[idx]=_conFotosLocales(loc,r); // conservar fotos locales
+          (_snap[col]||(_snap[col]={}))[k]=hr;_unpend(col,k);huboCambio=true;
+        }else{_markPend(col,k);} // lo local es más nuevo: se sube en el próximo push
       });
+      _savePend();
       if(huboCambio){
         try{localStorage.setItem(SK,JSON.stringify(state));}catch(e){}
-        _snapshotAll();
         state._lastSyncAt=Date.now();
         if(typeof currentScreen!=='undefined'&&!_modalAbierto())renderScreen(currentScreen);
         _syncStatus='ok';updateSyncBar();
@@ -1099,9 +1168,10 @@ SYNC_COLS.forEach(col=>(state[col]||[]).forEach(r=>{if(r&&!r.updatedAt)r.updated
   state.notas.forEach(n=>{if(!n.updatedAt)n.updatedAt=Date.now();});
 })();
 if(!state.deleted)state.deleted=[];
-/* v3.0.2 — snapshot inicial vacío: cualquier cambio local pendiente se detectará
-   en el primer push. Tras el primer pull/push exitoso se llena con _snapshotAll(). */
-_snap={};
+/* v3.7.1 — snapshot inicial = lo guardado en este dispositivo. Lo que falte subir ya está en
+   la lista persistente _pend (ptp_pend); la primera fusión con la nube detecta además lo local
+   más nuevo que la nube (rescata ediciones que la v3.7.0 dejó sin subir). */
+_snapshotAll();
 function nextId(){state.nextId=(state.nextId||0)+1;return Date.now()*1000+Math.floor(Math.random()*1000);}
 
 // ══════════════════════════════════════════════════════════
@@ -2165,7 +2235,8 @@ function crdConfigHTML(){
 function crdGuardarParam(k,v,min,max){
   let val=v;
   if(min!=null){val=Number(v);if(!isFinite(val)||val<min||val>max){showToast(`Valor fuera de rango (${min}–${max})`);renderConfig();return;}}
-  state.cuerdasConfig=Object.assign({},state.cuerdasConfig||{},{[k]:val});saveState();showToast('Guardado ✓');
+  const _cc=Object.assign({},state.cuerdasConfig||{},{[k]:val});_cc._ts=Object.assign({},_cc._ts||{},{[k]:Date.now()}); // v3.7.1 — sello por campo
+  state.cuerdasConfig=_cc;_markPend('_meta','cfg');saveState();showToast('Guardado ✓');
 }
 function crdModalLote(material,id){
   const l=id!=null?crdGetLote(id):null,ac=material==='acero';
@@ -2349,7 +2420,9 @@ crdInit();
 
 // ══ HELPERS ══
 const initials=n=>n.split(' ').slice(0,2).map(w=>w[0]).join('').toUpperCase();
-const fmtDate=iso=>{const[y,m,d]=iso.split('-');return`${d}/${m}/${y}`;};
+// v3.7.1 — Pantalla: DD/MM/AA (pedido de Rosy). Documentos (PDF y mensajes al cliente): DD/MM/AAAA con fmtDateL
+const fmtDate=iso=>{if(!iso)return'';const[y,m,d]=String(iso).slice(0,10).split('-');return`${d}/${m}/${String(y).slice(-2)}`;};
+const fmtDateL=iso=>{if(!iso)return'';const[y,m,d]=String(iso).slice(0,10).split('-');return`${d}/${m}/${y}`;};
 const fmtMoney=n=>'$'+Number(n).toLocaleString('es-MX');
 const getCliente=id=>state.clientes.find(c=>c.id===id);
 const getPiano=(cId,pId)=>{const c=getCliente(cId);return c&&c.pianos.find(p=>p.id===pId);};
@@ -2447,6 +2520,69 @@ const estadoLabel=c=>etiquetaCita(c);
 const pianoLabel=p=>p?`${p.marca} ${p.modelo} (${p.tipo})`:'';
 const estClass=e=>({Excelente:'est-bueno',Bueno:'est-bueno',Regular:'est-regular','Necesita reparación':'est-malo',Crítico:'est-malo'})[e]||'';
 const distKm=(la1,lo1,la2,lo2)=>{const R=6371,dLat=(la2-la1)*Math.PI/180,dLon=(lo2-lo1)*Math.PI/180,a=Math.sin(dLat/2)**2+Math.cos(la1*Math.PI/180)*Math.cos(la2*Math.PI/180)*Math.sin(dLon/2)**2;return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));};
+// ══ KILÓMETROS v3.7.1 — ida y vuelta por visita desde el punto de partida ══
+// Punto por defecto: Av. Miguel Alemán 228 con Playa Sur (coordenadas aproximadas de la zona;
+// se afinan con "Usar mi ubicación actual" en Configuración estando en casa). Vive en cada dispositivo.
+const KM_BASE_DEF={lat:23.1915,lon:-106.4175,nombre:'Av. Miguel Alemán 228, Playa Sur',aprox:true};
+function kmBase(){return (state.kmBase&&typeof state.kmBase.lat==='number')?state.kmBase:KM_BASE_DEF;}
+function kmTotalCalc(){let t=+(state.kmHistorico||0);(state.citas||[]).forEach(c=>(c.visitas||[]).forEach(v=>{if(v&&typeof v.km==='number')t+=v.km;}));return t;}
+function _kmCache(){try{return JSON.parse(localStorage.getItem('ptp_kmcache')||'{}')||{};}catch(e){return {};}}
+async function kmIdaCliente(cli){
+  // km de ida por calle (OSRM gratuito); sin internet o sin ruta → línea recta × 1.3
+  const b=kmBase();const key=[b.lat,b.lon,cli.lat,cli.lon].map(x=>(+x).toFixed(4)).join(',');
+  const cache=_kmCache();if(cache[key])return cache[key];
+  try{
+    const ctl=new AbortController();const t=setTimeout(()=>ctl.abort(),7000);
+    const r=await fetch(`https://router.project-osrm.org/route/v1/driving/${b.lon},${b.lat};${cli.lon},${cli.lat}?overview=false`,{signal:ctl.signal});
+    clearTimeout(t);
+    if(r.ok){const j=await r.json();
+      if(j&&j.routes&&j.routes[0]&&j.routes[0].distance>0){
+        const res={km:+(j.routes[0].distance/1000).toFixed(1),fuente:'calle'};
+        cache[key]=res;try{localStorage.setItem('ptp_kmcache',JSON.stringify(cache));}catch(e){}
+        return res;}}
+  }catch(e){}
+  return {km:+(distKm(b.lat,b.lon,cli.lat,cli.lon)*1.3).toFixed(1),fuente:'aprox'}; // no se guarda: se reintenta por calle después
+}
+// Si el cliente no tiene ubicación, usar el GPS del momento (iniciar/terminar en su domicilio).
+// Si el GPS está a menos de 300 m del punto de partida, estás en casa: no se usa.
+function _kmUbicarCliente(cli,lat,lon){
+  if(!cli||(cli.lat&&cli.lon)||lat==null||lon==null)return false;
+  const b=kmBase();if(distKm(b.lat,b.lon,lat,lon)<0.3)return false;
+  cli.lat=lat;cli.lon=lon;return true;
+}
+function _kmVisitaNueva(fecha,extra){return Object.assign({fecha,horasAprox:0,kmIda:0,km:null,notas:''},extra||{});}
+// Calcula las visitas nuevas (km:null) y mejora las aproximadas cuando ya hay ruta por calle
+let _kmCorriendo=false;
+async function kmCalcularPendientes(filtro){
+  if(_kmCorriendo)return;_kmCorriendo=true;
+  try{
+    let cambio=false;
+    for(const c of (state.citas||[])){
+      if(filtro&&filtro.citaId!=null&&c.id!==filtro.citaId)continue;
+      if(filtro&&filtro.clienteId!=null&&c.clienteId!==filtro.clienteId)continue;
+      const vs=(c.visitas||[]).filter(v=>v&&('km' in v)&&(v.km===null||v.kmFuente==='aprox'));
+      if(!vs.length)continue;
+      const cli=getCliente(c.clienteId);if(!cli||!cli.lat||!cli.lon)continue;
+      const r=await kmIdaCliente(cli);
+      const nv=+(r.km*2).toFixed(1);
+      vs.forEach(v=>{if(v.km===null||r.fuente==='calle'){if(v.km!==nv||v.kmFuente!==r.fuente){v.km=nv;v.kmFuente=r.fuente;cambio=true;}}});
+    }
+    if(cambio){saveState();if(currentScreen==='inicio'&&!_modalAbierto())renderScreen('inicio');}
+  }catch(e){console.warn('kmCalcularPendientes:',e);}
+  finally{_kmCorriendo=false;}
+}
+function kmBaseUsarActual(){
+  showToast('Obteniendo GPS…');
+  capturarGPS((lat,lon)=>{
+    if(!confirm(`¿Guardar esta ubicación como punto de partida?\n${lat.toFixed(5)}, ${lon.toFixed(5)}\n\nHazlo estando en casa.`))return;
+    state.kmBase={lat,lon,nombre:'Casa (GPS)',aprox:false};saveState();
+    showToast('Punto de partida guardado ✓');if(currentScreen==='config')renderScreen('config');
+  },msg=>showToast('⚠ '+msg,4000));
+}
+function kmBaseRestablecer(){
+  if(!confirm('¿Volver al punto de partida por defecto (Av. Miguel Alemán 228, Playa Sur)?'))return;
+  delete state.kmBase;saveState();if(currentScreen==='config')renderScreen('config');
+}
 
 // ══ TOAST ══
 let toastT;
@@ -2533,7 +2669,7 @@ function capturarGPS(cbOk,cbErr){
 function capturarGPSCliente(clienteId){
   showToast('Obteniendo GPS…');
   capturarGPS(
-    (lat,lon)=>{const c=getCliente(clienteId);if(c){c.lat=lat;c.lon=lon;saveState();}
+    (lat,lon)=>{const c=getCliente(clienteId);if(c){c.lat=lat;c.lon=lon;saveState();kmCalcularPendientes({clienteId});}
       const el=document.getElementById('gps-disp-'+clienteId);
       if(el)el.innerHTML=`<span style="font-family:monospace">${lat.toFixed(5)}, ${lon.toFixed(5)}</span>`;
       showToast('Ubicación GPS guardada ✓');},
@@ -2620,7 +2756,7 @@ async function renderInicio(){
     const osItems=c.ordenServicio?.items||[];
     const osTotal=osItems.reduce((s,i)=>s+Number(i.precio),0)||c.precio||0;
     const visHtml=vis.length?`<div style="font-size:11px;color:var(--text2);margin-bottom:5px">
-      ${vis.map((v,i)=>`<span>V${i+1}: ${fmtDate(v.fecha)}${v.horasAprox?' ('+v.horasAprox+'h)':''}</span>`).join(' · ')}
+      ${vis.map((v,i)=>`<span>V${i+1}: ${fmtDate(v.fecha)}${v.horasAprox?' ('+v.horasAprox+'h)':''}${typeof v.km==='number'?' · '+v.km+' km':''}</span>`).join(' · ')}
     </div>`:'';
     const itemsDropId=`os-items-${c.id}`;
     const servicioBtn=`<span style="font-size:11px;color:var(--primary);cursor:pointer;font-weight:600" onclick="toggleOsItems('${itemsDropId}')">
@@ -2730,7 +2866,7 @@ async function renderInicio(){
         ${perfAvatar}
         <div><div class="page-title">Hola, ${tec.nombre||'Técnico'}</div>
         <div class="page-sub">${new Date().toLocaleDateString('es-MX',{weekday:'long',day:'numeric',month:'long'})}</div>
-        <div style="font-size:10px;color:var(--text3);margin-top:1px;letter-spacing:.3px">PianoTune Pro v3.7.0</div></div>
+        <div style="font-size:10px;color:var(--text3);margin-top:1px;letter-spacing:.3px">PianoTune Pro v3.7.1</div></div>
       </div>
       <button class="btn btn-ghost btn-xs" onclick="navigate('config')">⚙ Config</button>
     </div>
@@ -2750,7 +2886,7 @@ async function renderInicio(){
     <div class="stat-card"><div class="stat-num">${state.clientes.length}</div><div class="stat-label">Clientes</div></div>
     <div class="stat-card"><div class="stat-num">${state.clientes.reduce((s,c)=>s+c.pianos.length,0)}</div><div class="stat-label">Pianos</div></div>
     <div class="stat-card"><div class="stat-num">${state.citas.filter(c=>estaFacturada(c)).length}</div><div class="stat-label">Facturados</div></div>
-    <div class="stat-card"><div class="stat-num">${Math.round(state.kmTotal)}<span style="font-size:13px"> km</span></div><div class="stat-label">Recorridos</div></div>
+    <div class="stat-card"><div class="stat-num">${Math.round(kmTotalCalc())}<span style="font-size:13px"> km</span></div><div class="stat-label">Recorridos</div></div>
     <div class="stat-card" onclick="abrirModalNotas()" style="cursor:pointer;grid-column:span 2"><div class="stat-num" style="font-size:18px">📝 <span style="font-size:22px;font-weight:800;color:var(--primary)">${(state.notas||[]).length}</span></div><div class="stat-label">Notas</div></div>
   </div>
 
@@ -2829,7 +2965,7 @@ function reagendarSesion(){
 function capturarGPSClienteInline(clienteId){
   showToast('Capturando GPS…');
   capturarGPS(
-    (lat,lon)=>{const c=getCliente(clienteId);if(c){c.lat=lat;c.lon=lon;saveState();showToast('GPS guardado ✓ Toca "Ir" para navegar');renderInicio();}},
+    (lat,lon)=>{const c=getCliente(clienteId);if(c){c.lat=lat;c.lon=lon;saveState();showToast('GPS guardado ✓ Toca "Ir" para navegar');renderInicio();kmCalcularPendientes({clienteId});}},
     msg=>showToast('⚠ '+msg,4000)
   );
 }
@@ -2839,12 +2975,12 @@ function terminarServicio(){
   const cli=cita?getCliente(cita.clienteId):null;
   capturarGPS(
     (lat,lon)=>{
-      let km=0;
-      if(s.latInicio&&s.lonInicio)km=distKm(s.latInicio,s.lonInicio,lat,lon);
-      else if(cli&&cli.lat&&cli.lon)km=distKm(lat,lon,cli.lat,cli.lon);
-      state.kmTotal+=km*2;state.sesionActiva=null;
+      // v3.7.1 — km: ida y vuelta desde el punto de partida (se calcula aparte, por visita)
+      _kmUbicarCliente(cli,lat,lon);
+      state.sesionActiva=null;
       if(cita&&cita.estado!=='realizado')cita.estado='realizado';
-      saveState();showToast(`Finalizado. +${(km*2).toFixed(1)} km registrados ✓`);renderInicio();
+      saveState();showToast('Servicio finalizado ✓');renderInicio();
+      if(cita)kmCalcularPendientes({citaId:cita.id});
       if(cita)setTimeout(()=>modalCerrarServicio(cita.id),500);},
     ()=>{state.sesionActiva=null;saveState();showToast('Servicio finalizado');renderInicio();if(cita)setTimeout(()=>modalCerrarServicio(cita.id),500);}
   );
@@ -4914,7 +5050,7 @@ function enviarDatosFiscales(clienteId){
 function enviarRecordatorioCita(clienteId,citaId){
   const c=getCliente(clienteId);const cita=state.citas.find(x=>x.id===citaId);if(!c||!cita)return;
   const piano=getPiano(cita.clienteId,cita.pianoId);
-  const msg=`Hola ${c.nombre.split(' ')[0]} 👋\n\n📅 *RECORDATORIO DE CITA*\n\n🎹 Servicio: ${cita.servicio}\n${piano?'Piano: '+piano.marca+' '+piano.modelo+'\n':''}📆 Fecha: ${fmtDate(cita.fecha)}\n⏰ Hora: ${cita.hora}\n\n¡Te espero puntual! Cualquier cambio avísame con anticipación.\n\n— Sergio Ruiz, Afinador de Pianos 🎹`;
+  const msg=`Hola ${c.nombre.split(' ')[0]} 👋\n\n📅 *RECORDATORIO DE CITA*\n\n🎹 Servicio: ${cita.servicio}\n${piano?'Piano: '+piano.marca+' '+piano.modelo+'\n':''}📆 Fecha: ${fmtDateL(cita.fecha)}\n⏰ Hora: ${cita.hora}\n\n¡Te espero puntual! Cualquier cambio avísame con anticipación.\n\n— Sergio Ruiz, Afinador de Pianos 🎹`;
   window.open(`https://wa.me/52${c.telefono.replace(/\D/g,'')}?text=${encodeURIComponent(msg)}`,'_blank');
 }
 
@@ -5356,7 +5492,9 @@ function renderConfig(){
     <label class="btn btn-ghost btn-xs" style="cursor:pointer">Importar<input type="file" accept=".json" style="display:none" onchange="importarJSON(this)"></label></div>
 
   <div class="sec">Estadísticas</div>
-  <div class="settings-row"><div class="sr-title">Kilómetros recorridos</div><div style="font-weight:700;color:var(--primary)">${Math.round(state.kmTotal)} km</div></div>
+  <div class="settings-row"><div><div class="sr-title">Kilómetros recorridos</div><div style="font-size:11px;color:var(--text2)">Ida y vuelta por visita${state.kmHistorico?` · incluye ${Math.round(state.kmHistorico)} km históricos`:''}</div></div><div style="font-weight:700;color:var(--primary)">${Math.round(kmTotalCalc())} km</div></div>
+  ${(()=>{const b=kmBase();return `<div class="settings-row" style="flex-wrap:wrap;gap:8px"><div style="flex:1;min-width:180px"><div class="sr-title">📍 Punto de partida</div><div style="font-size:11px;color:var(--text2)">${b.nombre}${b.aprox?' · <span style="color:var(--warning)">ubicación aproximada: captúrala estando en casa</span>':''}<br><span style="font-family:monospace">${b.lat.toFixed(5)}, ${b.lon.toFixed(5)}</span></div></div>
+    <div style="display:flex;gap:6px"><button class="btn btn-xs btn-outline" onclick="kmBaseUsarActual()">📍 Usar mi ubicación actual</button>${state.kmBase?'<button class="btn btn-xs btn-ghost" onclick="kmBaseRestablecer()">↺</button>':''}</div></div>`;})()}
   <div class="settings-row"><div class="sr-title">Clientes</div><div style="font-weight:700">${state.clientes.length}</div></div>
   <div class="settings-row"><div class="sr-title">Pianos</div><div style="font-weight:700">${state.clientes.reduce((s,c)=>s+c.pianos.length,0)}</div></div>
   <div class="settings-row"><div class="sr-title">Servicios realizados</div><div style="font-weight:700">${state.citas.filter(c=>c.estado==='realizado').length}</div></div>
@@ -5378,7 +5516,7 @@ function renderConfig(){
   </div>
   <div class="credits-block">
     <div class="credits-logo">🎹</div>
-    <div class="credits-app">PianoTune Pro v3.7.0</div>
+    <div class="credits-app">PianoTune Pro v3.7.1</div>
     <div class="credits-dev">Desarrollado por Sergio L. Ruiz Jones</div>
     <div class="credits-co">Pianos and Pianos — Mazatlán, Sin.</div>
   </div>`;
@@ -5515,9 +5653,11 @@ function iniciarServicio(citaId){
         else c.ordenServicio.items=[{nombre:c.servicio,precio:c.precio}];
       }
       const hoy=new Date().toISOString().split('T')[0];
-      c.visitas.push({fecha:hoy,horasAprox:0,kmIda:0,latInicio:lat,lonInicio:lon,notas:''});
+      c.visitas.push(_kmVisitaNueva(hoy,{latInicio:lat,lonInicio:lon}));
+      _kmUbicarCliente(getCliente(c.clienteId),lat,lon); // v3.7.1
       state.sesionActiva={citaId,inicio:Date.now(),latInicio:lat,lonInicio:lon};
       saveState();closeModal();showToast('Servicio iniciado ✓');renderInicio();
+      kmCalcularPendientes({citaId});
     },
     ()=>{
       const c=state.citas.find(x=>x.id===citaId);
@@ -5531,9 +5671,10 @@ function iniciarServicio(citaId){
         else c.ordenServicio.items=[{nombre:c.servicio,precio:c.precio}];
       }
       const hoy=new Date().toISOString().split('T')[0];
-      c.visitas.push({fecha:hoy,horasAprox:0,kmIda:0,notas:''});
+      c.visitas.push(_kmVisitaNueva(hoy));
       state.sesionActiva={citaId,inicio:Date.now(),latInicio:null,lonInicio:null};
       saveState();closeModal();showToast('Servicio iniciado (sin GPS)');renderInicio();
+      kmCalcularPendientes({citaId});
     }
   );
 }
@@ -5558,19 +5699,11 @@ function guardarVisita(citaId){
     fecha:document.getElementById('av-f').value,
     horasAprox:parseFloat(document.getElementById('av-h').value)||0,
     notas:document.getElementById('av-n').value.trim(),
-    kmIda:0
+    kmIda:0,km:null
   });
-  // Also capture GPS for km
-  capturarGPS(
-    (lat,lon)=>{
-      const vis=c.visitas[c.visitas.length-1];
-      const cli=getCliente(c.clienteId);
-      if(cli&&cli.lat&&cli.lon)vis.kmIda=distKm(lat,lon,cli.lat,cli.lon);
-      state.kmTotal+=vis.kmIda*2;
-      saveState();closeModal();showToast('Visita registrada ✓ +'+( vis.kmIda*2).toFixed(1)+'km');renderInicio();
-    },
-    ()=>{saveState();closeModal();showToast('Visita registrada ✓');renderInicio();}
-  );
+  // v3.7.1 — km de la visita: ida y vuelta desde el punto de partida a la ubicación del cliente
+  saveState();closeModal();showToast('Visita registrada ✓');renderInicio();
+  kmCalcularPendientes({citaId});
 }
 
 // ── Editar Orden de Servicio ──
@@ -5707,6 +5840,10 @@ function cerrarServicioConfirm(citaId,next){
 function aplicarCierre(c,cicloMeses){
   const hoy=new Date().toISOString().split('T')[0];
   c.ordenServicio.fechaCierre=hoy;
+  // v3.7.1 — todo servicio cerrado cuenta al menos un viaje (si no se inició, no había visita)
+  if(!Array.isArray(c.visitas))c.visitas=[];
+  if(!c.visitas.length)c.visitas.push(_kmVisitaNueva(hoy));
+  setTimeout(()=>kmCalcularPendientes({citaId:c.id}),800);
   c.recurrencia={cicloMeses,servicioId:null,fechaSugerida:''};
   c.estado='realizada';
   const _items=c.ordenServicio?.items||[];
@@ -5714,12 +5851,16 @@ function aplicarCierre(c,cicloMeses){
   c.cobro.total=_items.reduce((s,i)=>s+Number(i.precio||0),0)||c.precio||0;
   if(!Array.isArray(c.cobro.pagos))c.cobro.pagos=[];
   if(!c.factura)c.factura={facturado:false,tipoComprobante:'',receptor:'',fecha:'',folio:''};
-  // Save recurrencia on piano
-  if(cicloMeses>0&&c.pianoId){
+  // v3.7.1 — El último servicio se guarda SIEMPRE (con o sin recurrencia); el ciclo solo si se eligió
+  if(c.pianoId){
     const piano=getPiano(c.clienteId,c.pianoId);
-    if(piano){piano.cicloMeses=cicloMeses;piano.ultimoServicio=hoy;
-      const prox=new Date(hoy+'T00:00:00');prox.setMonth(prox.getMonth()+cicloMeses);
-      piano.proximoServicio=prox.toISOString().split('T')[0];}
+    if(piano){
+      piano.ultimoServicio=hoy;
+      if(/afina/i.test(c.servicio||'')||(c.ordenServicio?.items||[]).some(i=>/afina/i.test(i.nombre||'')))piano.ultimaAfinacion=hoy; // base para Seguimiento (v3.8)
+      if(cicloMeses>0){piano.cicloMeses=cicloMeses;
+        const prox=new Date(hoy+'T00:00:00');prox.setMonth(prox.getMonth()+cicloMeses);
+        piano.proximoServicio=prox.toISOString().split('T')[0];}
+    }
   }
   // Crear la cita de recurrencia real en el calendario (antes solo quedaba
   // como metadata en el piano y nunca aparecía al buscar en el calendario)
@@ -5930,7 +6071,7 @@ function enviarComprobantePorWA(citaId){
     `Piano: ${piano?piano.marca+' '+piano.modelo:''}\n\n`+
     `${lineas}\n\n*Total: ${fmtMoney(total)}*\n`+
     `Forma de pago: ${forma}\n`+
-    `Fecha: ${fmtDate(c.cobro?.fechaCobro||new Date().toISOString().split('T')[0])}\n\n`+
+    `Fecha: ${fmtDateL(c.cobro?.fechaCobro||new Date().toISOString().split('T')[0])}\n\n`+
     `¡Gracias por su preferencia! 🎹\n— ${tec.nombre||'Sergio Ruiz'}, Pianos & Pianos`;
   window.open(`https://wa.me/52${cli.telefono.replace(/\D/g,'')}?text=${encodeURIComponent(msg)}`,'_blank');
 }
@@ -5995,7 +6136,7 @@ function _generarDocPDF(c, tipo){
     <div style="font-weight:700;font-size:8pt;text-transform:uppercase;letter-spacing:.5px;color:#555;margin-bottom:2mm">Registro de visitas</div>
     ${c.visitas.map((v,i)=>`<div style="display:flex;gap:4mm;border-bottom:1px solid #eee;padding:1.5mm 0">
       <span style="color:#666">Visita ${i+1}:</span>
-      <span><b>${fmtDate(v.fecha)}</b>${v.horasAprox?' · '+v.horasAprox+'h':''}</span>
+      <span><b>${fmtDateL(v.fecha)}</b>${v.horasAprox?' · '+v.horasAprox+'h':''}</span>
       ${v.notas?`<span style="color:#666;flex:1">· ${v.notas}</span>`:''}
     </div>`).join('')}
     <div style="font-size:8.5pt;color:#444;margin-top:2mm">Total horas: <b>${c.visitas.reduce((s,v)=>s+(v.horasAprox||0),0)}h</b></div>
@@ -6006,7 +6147,7 @@ function _generarDocPDF(c, tipo){
     <div style="font-size:8pt;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#111;margin-bottom:2mm">Información de pago</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:2mm;font-size:9.5pt">
       <div><span style="color:#666">Forma:</span> <b>${c.cobro.formaPago==='efectivo'?'💵 Efectivo':c.cobro.formaPago==='transferencia'?'💳 Transferencia':'💳 Tarjeta'}</b></div>
-      <div><span style="color:#666">Fecha:</span> <b>${c.cobro.fechaCobro?fmtDate(c.cobro.fechaCobro):'—'}</b></div>
+      <div><span style="color:#666">Fecha:</span> <b>${c.cobro.fechaCobro?fmtDateL(c.cobro.fechaCobro):'—'}</b></div>
       ${c.cobro.anticipo?`<div><span style="color:#666">Anticipo:</span> <b>${fmtMoney(c.cobro.anticipo)}</b></div>`:''}
       ${c.cobro.notas?`<div style="grid-column:1/-1"><span style="color:#666">Ref:</span> ${c.cobro.notas}</div>`:''}
     </div>
@@ -6089,7 +6230,7 @@ tbody tr:nth-child(even){background:#e8f0fe}
     <div class="ig-row c3">
       <div class="ig-cell"><span class="il">Técnico</span><span class="iv">${tecNombre}</span></div>
       <div class="ig-cell"><span class="il">Clave</span><span class="iv">${piano&&piano.serie?piano.serie:'—'}</span></div>
-      <div class="ig-cell"><span class="il">Fecha cierre</span><span class="iv">${c.ordenServicio?.fechaCierre?fmtDate(c.ordenServicio.fechaCierre):fechaStr}</span></div>
+      <div class="ig-cell"><span class="il">Fecha cierre</span><span class="iv">${c.ordenServicio?.fechaCierre?fmtDateL(c.ordenServicio.fechaCierre):fechaStr}</span></div>
     </div>
   </div>
   ${visitasHTML}
@@ -6268,7 +6409,7 @@ function confirmarPausa(citaId){
   // Update today's visit or add new one
   const visHoy=c.visitas.find(v=>v.fecha===hoy);
   if(visHoy){visHoy.horasAprox=horas;visHoy.notas=notas;}
-  else c.visitas.push({fecha:hoy,horasAprox:horas,notas,kmIda:0});
+  else c.visitas.push({fecha:hoy,horasAprox:horas,notas,kmIda:0,km:null});
   c.estado='pausado';
   c.pausadaEl=hoy;
   // Stop GPS session
@@ -6286,24 +6427,21 @@ function retomarServicio(citaId){
       if(!c.visitas)c.visitas=[];
       const hoy=new Date().toISOString().split('T')[0];
       if(!c.visitas.find(v=>v.fecha===hoy))
-        c.visitas.push({fecha:hoy,horasAprox:0,notas:'',kmIda:0,latInicio:lat,lonInicio:lon});
-      const cli=getCliente(c.clienteId);
-      if(cli&&cli.lat&&cli.lon){
-        const km=distKm(lat,lon,cli.lat,cli.lon);
-        const vis=c.visitas[c.visitas.length-1];vis.kmIda=km;
-        state.kmTotal+=km*2;
-      }
+        c.visitas.push(_kmVisitaNueva(hoy,{latInicio:lat,lonInicio:lon}));
+      _kmUbicarCliente(getCliente(c.clienteId),lat,lon); // v3.7.1
       state.sesionActiva={citaId,inicio:Date.now(),latInicio:lat,lonInicio:lon};
       saveState();showToast('Servicio retomado ✓');renderInicio();
+      kmCalcularPendientes({citaId});
     },
     ()=>{
       const c=state.citas.find(x=>x.id===citaId);if(!c)return;
       c.estado='en_curso';delete c.pausadaEl;
       const hoy=new Date().toISOString().split('T')[0];
       if(!c.visitas)c.visitas=[];
-      if(!c.visitas.find(v=>v.fecha===hoy))c.visitas.push({fecha:hoy,horasAprox:0,notas:'',kmIda:0});
+      if(!c.visitas.find(v=>v.fecha===hoy))c.visitas.push(_kmVisitaNueva(hoy));
       state.sesionActiva={citaId,inicio:Date.now(),latInicio:null,lonInicio:null};
       saveState();showToast('Servicio retomado (sin GPS)');renderInicio();
+      kmCalcularPendientes({citaId});
     }
   );
 }
@@ -6321,7 +6459,7 @@ function checkAutoPausa(){
         if(!c.visitas)c.visitas=[];
         const hoy=new Date().toISOString().split('T')[0];
         if(!c.visitas.find(v=>v.fecha===hoy))
-          c.visitas.push({fecha:hoy,horasAprox:0,notas:'Auto-pausado',kmIda:0});
+          c.visitas.push({fecha:hoy,horasAprox:0,notas:'Auto-pausado',kmIda:0,km:null});
       });
       if(state.sesionActiva)state.sesionActiva=null;
       saveState();
@@ -6545,7 +6683,7 @@ function renderInicioDT(){
       <div class="dt-kpi-sub">${vencidos.length} vencidos</div>
     </div>
     <div class="dt-kpi-card">
-      <div class="dt-kpi-val" style="color:var(--text2)">${state.kmTotal||0} km</div>
+      <div class="dt-kpi-val" style="color:var(--text2)">${Math.round(kmTotalCalc())} km</div>
       <div class="dt-kpi-lbl">🚗 Recorridos totales</div>
       <div class="dt-kpi-sub">Acumulado</div>
     </div>
@@ -7403,7 +7541,8 @@ setTimeout(async()=>{
   initFirebase();
   try{await ensureAuth();}catch(e){console.warn('Auth inicial falló:',e);}
   await pullFromCloud();
-  if(state._needsPush){console.log('Recuperando push pendiente...');pushToCloud();}
+  if(_pendCount()||state._needsPush){console.log('Recuperando push pendiente...');pushToCloud();}
+  setTimeout(()=>kmCalcularPendientes(),4000); // v3.7.1 — km de visitas sin calcular (p.ej. sin internet o sin ubicación)
 },1500);
 // Pull al volver al frente + flush de push al ocultarse
 document.addEventListener('visibilitychange',()=>{
@@ -7411,7 +7550,7 @@ document.addEventListener('visibilitychange',()=>{
     pullFromCloud();
   }else{
     if(_syncTimer){clearTimeout(_syncTimer);_syncTimer=null;pushToCloud();}
-    else if(state._needsPush){pushToCloud();}
+    else if(_pendCount()||state._needsPush){pushToCloud();}
   }
 });
 // v3.0 — Respaldo: pull cada 10 min (el tiempo real ya cubre lo inmediato)
