@@ -301,7 +301,7 @@ textarea.input{resize:vertical;min-height:68px}
     ☁️ <span id="dt-sync-txt">Listo</span>
   </div>
   <div style="padding:10px 16px 14px">
-    <div style="color:rgba(255,255,255,.35);font-size:10px;font-weight:600;letter-spacing:.4px">PianoTune Pro v3.4.1</div>
+    <div style="color:rgba(255,255,255,.35);font-size:10px;font-weight:600;letter-spacing:.4px">PianoTune Pro v3.6.2</div>
   </div>
 </div>
 
@@ -326,6 +326,7 @@ textarea.input{resize:vertical;min-height:68px}
     <div id="screen-config" class="screen hidden"></div>
     <div id="screen-historial" class="screen hidden"></div>
     <div id="screen-contactar" class="screen hidden"></div>
+    <div id="screen-cuerdas" class="screen hidden"></div>
   </div>
 </div>
 
@@ -372,7 +373,7 @@ textarea.input{resize:vertical;min-height:68px}
 // ══ CONSTANTS ══
 const SK='pianotune_v3';
 const isDesktop=()=>window.innerWidth>=1024; // v2.9.0 — debe estar al inicio
-var DT_SCREEN_TITLES={inicio:'Dashboard',clientes:'Clientes',calendario:'Agenda',contactar:'Por contactar',servicios:'Catálogo de servicios',productos:'Inventario',presupuesto:'Presupuestos',config:'Configuración',cotizador:'Cotizador de Cuerdas',ayuda:'Manual de Ayuda'};
+var DT_SCREEN_TITLES={inicio:'Dashboard',clientes:'Clientes',calendario:'Agenda',contactar:'Por contactar',servicios:'Catálogo de servicios',productos:'Inventario',presupuesto:'Presupuestos',config:'Configuración',cotizador:'Cotizador de Cuerdas',cuerdas:'Cuerdas entorchadas',ayuda:'Manual de Ayuda'};
 const PIANO_TIPOS={
   'Cola':["9 pies (Concert)","7 pies (Semi-Concert)","6 pies (Medium)","Baby Grand (hasta 5p4)","Cuarto de Cola (5p5-6p5)"],
   'Grand':["9 pies (Concert)","7 pies (Semi-Concert)","6 pies (Medium)","Baby Grand"],
@@ -542,6 +543,10 @@ function defaultState(){
     ],
     presupuestos:[],
     prospectos:[],
+    ordenesCuerdas:[],      // v3.6.0 — módulo de cuerdas entorchadas
+    lotesAlambre:[],
+    combinacionesCobre:[],
+    cuerdasConfig:{},
     sesionActiva:null,
     kmTotal:0,
     googleUser:null,
@@ -571,6 +576,9 @@ function migrate(s){
   s.citas.forEach(c=>{if(!c.pianoId)c.pianoId=null;if(!c.duracionH)c.duracionH=c.duracion?+(c.duracion/60).toFixed(1):1.5;});
   if(!s.kmTotal)s.kmTotal=0;
   if(!s.prospectos)s.prospectos=[]; // v2.11 — Por contactar (Etapa A)
+  if(!s.ordenesCuerdas)s.ordenesCuerdas=[];         // v3.6.0 — módulo de cuerdas
+  if(!s.lotesAlambre)s.lotesAlambre=[];
+  if(!s.combinacionesCobre)s.combinacionesCobre=[];
   if(!s.sesionActiva)s.sesionActiva=null;
   if(!s.googleUser)s.googleUser=null;
   if(!s.tecnico)s.tecnico={nombre:'Sergio Ruiz',whatsapp:'6691234567',foto:'',datosBancarios:'',constanciaFiscal:''};
@@ -697,7 +705,7 @@ function _deviceId(){
 }
 
 // v2.9.9 — Confiabilidad: detección automática de cambios por snapshot
-const SYNC_COLS=['clientes','citas','presupuestos','productos','servicios','notas','prospectos'];
+const SYNC_COLS=['clientes','citas','presupuestos','productos','servicios','notas','prospectos','ordenesCuerdas','lotesAlambre','combinacionesCobre']; // v3.6.0 — + módulo de cuerdas
 let _snap={};
 function _recJson(r){return JSON.stringify({...r,updatedAt:undefined});}
 function _snapshotAll(){_snap={};SYNC_COLS.forEach(col=>{_snap[col]={};(state[col]||[]).forEach(r=>{if(r&&r.id!=null)_snap[col][r.id]=_recJson(r);});});}
@@ -773,6 +781,7 @@ async function fetchRemote(){
       remote.nextId=m.nextId||0;
       if(m.tecnico)remote.tecnico=m.tecnico;
       if(m.kmTotal!=null)remote.kmTotal=m.kmTotal;
+      if(m.cuerdasConfig)remote.cuerdasConfig=m.cuerdasConfig; // v3.6.0
       if(m.catalogVersion)remote.catalogVersion=m.catalogVersion;
     }
     return {ok:true,data:remote};
@@ -834,6 +843,7 @@ async function _pushChangedDocs(){
     _syncTs:state._syncTs||Date.now(),
     nextId:state.nextId||0,
     kmTotal:state.kmTotal||0,
+    cuerdasConfig:state.cuerdasConfig||{}, // v3.6.0
     tecnico:state.tecnico||{},
     catalogVersion:state.catalogVersion||'',
     device:_deviceId(),
@@ -871,6 +881,8 @@ async function resetYCargarCatalogo(){
     state.presupuestos=[];
     state.notas=[];
     state.prospectos=[];
+    state.ordenesCuerdas=[];      // v3.6.0 (inventario lotesAlambre se conserva)
+    state.combinacionesCobre=[];
     state.deleted=[];
     state.sesionActiva=null;
     state.kmTotal=0;
@@ -1092,6 +1104,1003 @@ if(!state.deleted)state.deleted=[];
 _snap={};
 function nextId(){state.nextId=(state.nextId||0)+1;return Date.now()*1000+Math.floor(Math.random()*1000);}
 
+// ══════════════════════════════════════════════════════════
+// MÓDULO CUERDAS ENTORCHADAS — v3.6.0–v3.6.2 · datos, cálculos, inventario y presupuesto
+// Diseño: claude/DISENO_MODULO_CUERDAS.md (Proyecto Piano Tune App)
+// Colecciones nuevas (sincronizadas): ordenesCuerdas · lotesAlambre · combinacionesCobre
+// ══════════════════════════════════════════════════════════
+const CRD_IN=25.4;
+// Catálogo de diámetros AWG (lo que la app conoce). La semilla del inventario es solo lo que hay en el taller.
+const CRD_AWG={36:.0050,35:.0056,34:.0063,33:.0071,32:.0080,31:.0089,30:.0100,29:.0113,28:.0126,27:.0142,26:.0159,25:.0179,24:.0201,23:.0226,22:.0253,21:.0285,20:.0320,19:.0359,18:.0403,17:.0453,16:.0508,15:.0571,14:.0641,13:.0720,12:.0808,11:.0907,10:.1019};
+const CRD_AWG_SEMILLA=[31,30,29,28,27,26,25,24,23,22,21,20,19,18,17,16,15,14,13,12];
+const CRD_MARCAS_ACERO=['Roslau','Mapes','Paulello','Otra'];
+const CRD_CFG_DEF={gDefault:39,gaza:'helix',tolVueltas:2,eAceroMPa:207000,factorForss:1.82,endsDefault:13,awsmDefault:13,tolLoteAcero:.0015};
+// Tipos entorchados de Pscale: n = cuerdas por nota
+const CRD_TIPOS={BS:{n:2,doble:false},US:{n:1,doble:false},TS:{n:3,doble:false},UD:{n:1,doble:true},BD:{n:2,doble:true}};
+const CRD_GAZAS={helix:'Helix (English)',euro1_agudos:'Euro sencilla · tang a agudos',euro1_graves:'Euro sencilla · tang a graves',euro2_agudos:'Euro doble · tang a agudos',euro2_graves:'Euro doble · tang a graves'};
+
+const _crdR1=v=>v==null?null:Math.round(v*10)/10;
+const _crdNum=v=>{if(v==null)return null;const t=String(v).trim();if(t==='')return null;const n=Number(t);return isFinite(n)?n:null;};
+// Acepta pulgadas decimales (.061) o milésimas (61) → pulgadas
+const crdPulg=v=>{const n=_crdNum(v);if(n==null)return null;return n>=1?n/1000:n;};
+
+function crdCfg(){return Object.assign({},CRD_CFG_DEF,state.cuerdasConfig||{});}
+
+// ── Inicialización (colecciones + semilla de cobre AWG 31–12) ──
+function crdInit(){
+  if(!Array.isArray(state.ordenesCuerdas))state.ordenesCuerdas=[];
+  if(!Array.isArray(state.lotesAlambre))state.lotesAlambre=[];
+  if(!Array.isArray(state.combinacionesCobre))state.combinacionesCobre=[];
+  if(!state.cuerdasConfig||typeof state.cuerdasConfig!=='object')state.cuerdasConfig={};
+  // Ids deterministas + updatedAt:1 → no se duplican entre dispositivos y cualquier
+  // edición hecha en otro dispositivo (diámetro medido, etc.) gana al sincronizar.
+  if(!state.lotesAlambre.some(l=>l&&l.material==='cobre')){
+    const hoy=new Date().toISOString().split('T')[0];
+    CRD_AWG_SEMILLA.forEach(g=>{
+      const id='lot-cu-awg'+g+'-1';
+      if(state.lotesAlambre.some(l=>String(l.id)===id))return;
+      state.lotesAlambre.push({id,material:'cobre',clave:'AWG'+g+'-1',sistema:'AWG',calibre:g,marca:'',
+        diamNominal:CRD_AWG[g],diamMedido:null,proveedor:'',fechaAlta:hoy,activo:true,notas:'',updatedAt:1});
+    });
+    try{localStorage.setItem(SK,JSON.stringify(state));}catch(e){}
+  }
+}
+
+// ── Inventario de alambre (lotes) ──
+function crdDiamLote(l){return l?(Number(l.diamMedido)||Number(l.diamNominal)||0):0;}
+function crdLotesTodos(material){return (state.lotesAlambre||[]).filter(l=>l&&l.material===material).sort((a,b)=>crdDiamLote(a)-crdDiamLote(b));}
+function crdLotes(material){return (state.lotesAlambre||[]).filter(l=>l&&l.material===material&&l.activo!==false);}
+function crdGetLote(id){return id==null?null:(state.lotesAlambre||[]).find(l=>String(l.id)===String(id))||null;}
+function crdCalLabel(l){return l?(l.sistema==='AWG'?'AWG'+l.calibre:l.sistema==='mm'?l.calibre+'mm':String(l.calibre)):'';}
+function crdAvisoLote(l){
+  if(l&&l.material==='acero'&&/mapes/i.test(l.marca||'')&&!Number(l.diamMedido))
+    return 'Mide el diámetro real: el acero Mapes suele venir corto.';
+  return '';
+}
+function crdGuardarLote(datos){
+  const now=Date.now();
+  if(datos.id!=null){
+    const l=crdGetLote(datos.id);if(!l)return null;
+    Object.assign(l,datos,{updatedAt:now});saveState();return l;
+  }
+  const l=Object.assign({id:nextId(),material:'cobre',clave:'',sistema:'AWG',calibre:null,marca:'',diamNominal:null,diamMedido:null,
+    proveedor:'',fechaAlta:new Date().toISOString().split('T')[0],activo:true,notas:''},datos);
+  if(l.sistema==='AWG'&&l.diamNominal==null&&CRD_AWG[l.calibre])l.diamNominal=CRD_AWG[l.calibre];
+  if(l.sistema==='mm'&&l.diamNominal==null&&_crdNum(l.calibre))l.diamNominal=+(Number(l.calibre)/CRD_IN).toFixed(5);
+  if(!l.clave){
+    const base=l.material==='acero'?((l.marca||'Acero')+'-'+(l.diamNominal!=null?String(l.diamNominal).replace(/^0/,''):'')):crdCalLabel(l);
+    const n=(state.lotesAlambre||[]).filter(x=>x.clave&&x.clave.indexOf(base+'-')===0).length+1;
+    l.clave=base+'-'+n;
+  }
+  state.lotesAlambre.push(l);saveState();return l;
+}
+// Los lotes no se borran (el historial de combinaciones los referencia): se desactivan
+function crdDesactivarLote(id,activo=false){const l=crdGetLote(id);if(!l)return;l.activo=activo;saveState();}
+
+// Lote de acero activo más cercano al diámetro pedido (null si ninguno dentro de tolerancia)
+function crdLoteAcero(Dnom,cfg=crdCfg()){
+  let best=null;
+  crdLotes('acero').forEach(l=>{const d=Math.abs(crdDiamLote(l)-Dnom);if(!best||d<best.d)best={l,d};});
+  return best&&best.d<=cfg.tolLoteAcero?best.l:null;
+}
+// Calibres de cobre disponibles: uno por calibre; loteId preseleccionado solo si hay un único lote activo
+function crdCalibresCobre(){
+  const g={};
+  crdLotes('cobre').forEach(l=>{const k=crdCalLabel(l);(g[k]=g[k]||[]).push(l);});
+  return Object.keys(g).map(k=>{
+    const ls=g[k];
+    return {cal:k,diam:crdDiamLote(ls[0]),loteId:ls.length===1?ls[0].id:null,lotes:ls.map(l=>l.id)};
+  }).filter(c=>c.diam>0).sort((a,b)=>a.diam-b.diam);
+}
+
+// ── Física ──
+// Elongación de 0 a tensión de trabajo (solo el núcleo carga tensión). TEN de Pscale en lb/100.
+function crdElongacion(ten,D,cfg=crdCfg()){
+  if(!(ten>0)||!(D>0))return 0;
+  const T=ten*100*4.44822, area=Math.PI/4*Math.pow(D*CRD_IN,2);
+  return T/(area*cfg.eAceroMPa);
+}
+// OD calculado (Forss): sencilla D + k·F · doble D + k·(E+F)
+function crdOdCalc(D,Ed,Fd,cfg=crdCfg()){return D+cfg.factorForss*((Ed||0)+(Fd||0));}
+
+// Promedio real de una combinación (registro de combinaciones, sin descartadas)
+function crdPromedioReal(capa,D,E_cal,F_cal){
+  const rs=(state.combinacionesCobre||[]).filter(r=>r&&!r.descartada&&r.capa===capa&&Math.abs((r.D_ef||r.D||0)-D)<.0005
+    &&(r.E_cal||'')===(E_cal||'')&&(r.F_cal||'')===(F_cal||'')&&r.odReal>0);
+  if(!rs.length)return null;
+  return {avg:rs.reduce((s,r)=>s+r.odReal,0)/rs.length,n:rs.length};
+}
+
+// Sugerencia de cobre: opción debajo y arriba del OD objetivo; "elegida" = la más cercana
+function crdSugerirCobre(D,OD,doble,cfg=crdCfg()){
+  const cal=crdCalibresCobre();
+  if(!cal.length||!(OD>D))return null;
+  let E=null,cands;
+  if(!doble){
+    cands=cal.map(F=>({E:null,F,od:crdOdCalc(D,0,F.diam,cfg)}));
+  }else{
+    const eObj=(OD-D)/5.4;
+    E=cal.reduce((b,c)=>Math.abs(c.diam-eObj)<Math.abs(b.diam-eObj)?c:b,cal[0]);
+    cands=cal.filter(F=>F.diam>=E.diam).map(F=>({E,F,od:crdOdCalc(D,E.diam,F.diam,cfg)}));
+  }
+  if(!cands.length)return null;
+  const eps=1e-7;
+  const abajo=cands.filter(c=>c.od<=OD+eps).sort((a,b)=>b.od-a.od)[0]||null;
+  const arriba=cands.filter(c=>c.od>=OD-eps).sort((a,b)=>a.od-b.od)[0]||null;
+  const ops=[];[abajo,arriba].forEach(o=>{if(o&&!ops.some(x=>x.F.cal===o.F.cal))ops.push(o);});
+  const capa=doble?'doble':'sencilla';
+  const opciones=ops.map(o=>({
+    E_cal:o.E?o.E.cal:null,E_diam:o.E?o.E.diam:null,E_loteId:o.E?o.E.loteId:null,
+    F_cal:o.F.cal,F_diam:o.F.diam,F_loteId:o.F.loteId,
+    odCalc:+o.od.toFixed(4),dif:+(o.od-OD).toFixed(4),
+    real:crdPromedioReal(capa,D,o.E?o.E.cal:null,o.F.cal)
+  }));
+  let elegida=0;
+  if(opciones.length===2&&Math.abs(opciones[1].dif)<Math.abs(opciones[0].dif))elegida=1;
+  return {opciones,elegida};
+}
+function _crdAplicarCobre(c,op){
+  ['E_cal','E_diam','E_loteId','F_cal','F_diam','F_loteId','odCalc'].forEach(k=>c[k]=op?op[k]:null);
+}
+// D efectivo de una cuerda: diámetro del lote de acero asignado o el nominal
+function crdDEf(c){const l=crdGetLote(c.D_loteId);return l?crdDiamLote(l):c.D;}
+
+// ── Lector Pscale 360 (.txt) ──
+function crdParsePscale(txt){
+  const out={nombre:'',wrapcon:'.89',steplen:13,pitch:null,notas:[],error:''};
+  if(!txt||typeof txt!=='string'){out.error='Archivo vacío';return out;}
+  txt=txt.replace(/^﻿/,'').replace(/\\\]/g,']').trim();
+  const k=txt.indexOf(']');
+  if(k<0){out.error='No parece una escala de Pscale (falta el separador "]").';return out;}
+  const hp=txt.slice(0,k).split('^');
+  out.nombre=(hp[0]||'').trim();
+  out.wrapcon=(hp[1]||'.89').trim();
+  out.steplen=_crdNum(hp[2])||13;
+  out.pitch=_crdNum(hp[3]);
+  txt.slice(k+1).split(';').forEach(rec=>{
+    const f=rec.split(',').map(x=>x.trim());
+    if(f.length<10)return;
+    const nota=parseInt(f[0],10),tipo=(f[1]||'').toUpperCase();
+    if(!(nota>=1&&nota<=88))return;
+    const b=(f[9]||'').split('|');
+    let diam=_crdNum(f[3]);if(diam!=null&&diam>=1)diam/=1000;
+    let od=_crdNum(f[4]);if(od!=null&&od>=1)od/=1000;
+    out.notas.push({nota,tipo,splm:_crdNum(f[2]),diam,od,ends:_crdNum(f[5]),ten:_crdNum(f[6]),brk:_crdNum(f[7]),inh:_crdNum(f[8]),
+      bphp:[_crdNum(b[0]),_crdNum(b[1]),_crdNum(b[2])],lsplm:(b[3]||'').trim(),awsm:_crdNum(b[4]),wrapcon:(b[5]||'').trim().toUpperCase()});
+  });
+  if(!out.notas.length)out.error='No se encontraron notas en el archivo.';
+  else if(!out.notas.some(n=>CRD_TIPOS[n.tipo]))out.error='La escala no tiene notas entorchadas.';
+  return out;
+}
+
+// Traduce la escala a cuerdas de fabricación (valores de máquina, ya compensados)
+function crdCuerdasDesdeEscala(esc,cfg=crdCfg()){
+  const notas=esc.notas.filter(n=>CRD_TIPOS[n.tipo]).sort((a,b)=>b.nota-a.nota);
+  const avisos=[],cuerdas=[];
+  const av=(nota,txt)=>avisos.push({nota,txt});
+  notas.forEach((n,i)=>{
+    const t=CRD_TIPOS[n.tipo];
+    if(n.splm==null||n.diam==null||n.od==null){av(n.nota,'Datos incompletos (SPLM, DIAM u ODWRAP): nota omitida.');return;}
+    let ends=n.ends;
+    if(ends==null){ends=cfg.endsDefault;av(n.nota,`Sin ENDS: se usaron ${ends} mm.`);}
+    if(!(n.ten>0))av(n.nota,'Sin tensión: no se compensó la elongación.');
+    const e=crdElongacion(n.ten,n.diam,cfg);
+    const H=_crdR1((n.splm-2*ends)/(1+e));
+    const material=n.wrapcon==='A'?'aluminio':n.wrapcon==='I'?'hierro':'cobre';
+    if(material!=='cobre')av(n.nota,`Entorchado en ${material}: material no trabajado. Re-escalar esta nota en cobre.`);
+    const awsm=t.doble?(n.awsm||esc.steplen||cfg.awsmDefault):null;
+    const loteD=crdLoteAcero(n.diam,cfg);
+    const Def=loteD?crdDiamLote(loteD):n.diam;
+    const sug=material==='cobre'?crdSugerirCobre(Def,n.od,t.doble,cfg):null;
+    const op=sug?sug.opciones[sug.elegida]:null;
+    for(let s=0;s<t.n;s++){
+      const bp=n.bphp[s];
+      const c={nota:n.nota,cuerda:s+1,tipo:n.tipo,doble:t.doble,material,
+        D:n.diam,D_loteId:loteD?loteD.id:null,odObj:n.od,
+        G:cfg.gDefault,gaza:cfg.gaza,
+        A:null,B:null,H,awsm,largoE:null,inicioE:null,finE:null,
+        elongacionPct:+(e*100).toFixed(2),faltaA:bp==null,avisos:[],
+        origenDatos:{BPHP:bp,SPLM:n.splm,LSPLM:n.lsplm||null,ENDS:ends,TEN:n.ten,AWSM:awsm},
+        estado:'pendiente',fechaHecha:null,odReal:null,odInteriorReal:null,notas:''};
+      _crdAplicarCobre(c,op);
+      if(bp!=null){
+        c.A=_crdR1((bp+ends)/(1+e));c.B=_crdR1(c.A+H);
+        // BPHP fuera de tendencia: lejos de sus dos vecinas cuando ellas sí coinciden
+        const p=notas[i-1],q=notas[i+1];
+        const vp=p&&p.bphp[s],vq=q&&q.bphp[s];
+        if(vp!=null&&vq!=null&&p.nota===n.nota+1&&q.nota===n.nota-1&&Math.abs(vp-vq)<10&&Math.abs(bp-(vp+vq)/2)>10){
+          const txt=`BPHP${s+1} = ${bp} se aparta de sus vecinas (${vp} / ${vq}). Revisa la medida.`;
+          c.avisos.push(txt);av(n.nota,txt);
+        }
+      }
+      if(t.doble){
+        c.largoE=_crdR1(H-2*awsm);
+        if(c.A!=null){c.inicioE=_crdR1(c.A+awsm);c.finE=_crdR1(c.B-awsm);}
+      }
+      if(!loteD)c.avisos.push(`Sin lote de acero ${String(n.diam).replace(/^0/,'')} en inventario.`);
+      if(material==='cobre'&&!op)c.avisos.push('Sin calibre de cobre disponible para este OD.');
+      cuerdas.push(c);
+    }
+  });
+  const faltaA=cuerdas.filter(c=>c.faltaA).length;
+  if(faltaA)avisos.unshift({nota:null,txt:`${faltaA} cuerda(s) sin BPHP: falta capturar A antes de fabricar.`});
+  return {cuerdas,avisos};
+}
+
+// ── Órdenes ──
+function crdSiguienteFolio(){
+  const max=(state.ordenesCuerdas||[]).reduce((m,o)=>{const k=parseInt(String(o.folio||'').replace(/\D/g,''),10);return k>m?k:m;},0);
+  return 'OC-'+String(max+1).padStart(4,'0');
+}
+function _crdRefoliar(o){o.cuerdas.forEach((c,i)=>c.folio=o.folio+'-'+String(i+1).padStart(2,'0'));}
+function crdEstadoOrden(o){
+  if(o.estado==='instalada')return'instalada';
+  const cs=o.cuerdas||[];
+  if(!cs.length||cs.some(c=>c.faltaA))return'borrador';
+  if(cs.every(c=>c.estado==='hecha'))return'terminada';
+  return'fabricacion';
+}
+function _crdNuevaOrden(clienteId,pianoId,origen){
+  return {id:nextId(),folio:crdSiguienteFolio(),clienteId,pianoId,citaId:null,presupuestoId:null,origen,
+    estado:'borrador',fechaCreada:new Date().toISOString().split('T')[0],fechaTerminada:null,escala:null,cuerdas:[],notas:''};
+}
+// Escenario 2 — prepara la orden SIN guardarla (para la vista previa)
+function crdPrepararOrdenPscale(txt,clienteId,pianoId,cfg=crdCfg()){
+  const esc=crdParsePscale(txt);
+  if(esc.error)return {error:esc.error};
+  const {cuerdas,avisos}=crdCuerdasDesdeEscala(esc,cfg);
+  if(!cuerdas.length)return {error:'No se generó ninguna cuerda.',avisos};
+  const o=_crdNuevaOrden(clienteId,pianoId,'pscale');
+  o.escala={nombre:esc.nombre,pitch:esc.pitch,wrapcon:esc.wrapcon,steplen:esc.steplen,raw:txt.length<20000?txt:''};
+  o.cuerdas=cuerdas;_crdRefoliar(o);o.estado=crdEstadoOrden(o);
+  return {orden:o,resumen:{cuerdas:cuerdas.length,faltaA:cuerdas.filter(c=>c.faltaA).length,avisos}};
+}
+// Escenario 1 — orden vacía para capturar cuerdas físicas
+function crdNuevaOrdenMuestra(clienteId,pianoId){return _crdNuevaOrden(clienteId,pianoId,'muestra');}
+function crdGuardarOrden(o){
+  const i=state.ordenesCuerdas.findIndex(x=>x.id===o.id);
+  // Orden nueva cuyo folio ya se usó (se guardó otra mientras se veía la vista previa) → folio nuevo
+  if(i<0&&state.ordenesCuerdas.some(x=>x.folio===o.folio)){o.folio=crdSiguienteFolio();_crdRefoliar(o);}
+  o.estado=crdEstadoOrden(o);
+  if(i<0)state.ordenesCuerdas.push(o);else state.ordenesCuerdas[i]=o;
+  saveState();return o;
+}
+function crdGetOrden(id){return (state.ordenesCuerdas||[]).find(o=>String(o.id)===String(id))||null;}
+function crdGetCuerda(o,folio){return o?(o.cuerdas||[]).find(c=>c.folio===folio)||null:null;}
+function crdEliminarOrden(id){
+  tombstone('ordenesCuerdas',id);
+  state.ordenesCuerdas=state.ordenesCuerdas.filter(o=>o.id!==id);
+  saveState();
+}
+
+// Escenario 1 — valida y arma una cuerda medida en el taller (no la guarda)
+// datos: {nota, cuerda, doble, D, odObj, E_cal, F_cal, G, gaza, A, B, H}
+function crdCuerdaMuestra(datos,cfg=crdCfg()){
+  const errores=[],avisos=[];
+  const D=crdPulg(datos.D),odObj=crdPulg(datos.odObj);
+  const A=_crdNum(datos.A),B=_crdNum(datos.B);let H=_crdNum(datos.H);
+  const doble=!!datos.doble;
+  if(!(D>0))errores.push('Falta D (núcleo).');
+  if(A==null||B==null)errores.push('Faltan A y B.');
+  else if(B<=A)errores.push('B debe ser mayor que A.');
+  const cal=crdCalibresCobre(),byCal=k=>cal.find(c=>c.cal===k)||null;
+  let F=datos.F_cal?byCal(datos.F_cal):null, E=datos.E_cal?byCal(datos.E_cal):null;
+  if(datos.F_cal&&!F)errores.push(`El calibre ${datos.F_cal} no está en el inventario.`);
+  if(datos.E_cal&&!E)errores.push(`El calibre ${datos.E_cal} no está en el inventario.`);
+  if(!F&&!(odObj>0))errores.push('Captura F o el OD.');
+  if(doble&&F&&!E&&!(odObj>0))errores.push('En dobles captura E (o el OD para sugerirlo).');
+  const loteD=D>0?crdLoteAcero(D,cfg):null;
+  const Def=loteD?crdDiamLote(loteD):D;
+  let op=null;
+  if(!errores.length){
+    if(F&&(!doble||E)){
+      op={E_cal:E?E.cal:null,E_diam:E?E.diam:null,E_loteId:E?E.loteId:null,F_cal:F.cal,F_diam:F.diam,F_loteId:F.loteId,
+        odCalc:+crdOdCalc(Def,E?E.diam:0,F.diam,cfg).toFixed(4)};
+      if(odObj>0&&Math.abs(op.odCalc-odObj)>.003)
+        avisos.push(`Con ese cobre el OD calculado es ${op.odCalc.toFixed(3)} y el OD capturado ${odObj.toFixed(3)}: revisa.`);
+    }else{
+      const sug=crdSugerirCobre(Def,odObj,doble,cfg);
+      if(!sug)errores.push('No hay cobre en inventario para ese OD.');
+      else{op=sug.opciones[sug.elegida];avisos.push(`Cobre sugerido: ${op.E_cal?op.E_cal+' + ':''}${op.F_cal}.`);}
+    }
+  }
+  if(!errores.length){
+    if(H==null)H=_crdR1(B-A);
+    if(H<200)avisos.push('H mide menos de 200 mm: ¿capturaste A, B y H en centímetros? La app usa milímetros.');
+    else{
+      const dif=H-(B-A),vuelta=(op.F_diam||0)*CRD_IN;
+      if(vuelta>0&&Math.abs(dif)/vuelta>cfg.tolVueltas)
+        avisos.push(`H no coincide con B − A: ${(dif/vuelta>0?'+':'')}${(dif/vuelta).toFixed(1)} vueltas.`);
+    }
+  }
+  if(errores.length)return {errores,avisos};
+  const awsm=doble?cfg.awsmDefault:null;
+  const c={nota:_crdNum(datos.nota),cuerda:_crdNum(datos.cuerda)||1,tipo:datos.tipo||(doble?'UD':'BS'),doble,material:'cobre',
+    D,D_loteId:loteD?loteD.id:null,odObj:odObj||op.odCalc,
+    G:_crdNum(datos.G)||cfg.gDefault,gaza:datos.gaza||cfg.gaza,
+    A,B,H,awsm,largoE:doble?_crdR1(H-2*awsm):null,inicioE:doble?_crdR1(A+awsm):null,finE:doble?_crdR1(B-awsm):null,
+    elongacionPct:0,faltaA:false,avisos:[],origenDatos:null,
+    estado:'pendiente',fechaHecha:null,odReal:null,odInteriorReal:null,notas:datos.notas||''};
+  _crdAplicarCobre(c,op);
+  if(!loteD)c.avisos.push('Sin lote de acero de ese diámetro en inventario.');
+  return {cuerda:c,errores,avisos};
+}
+function crdAgregarCuerda(ordenId,cuerda){
+  const o=crdGetOrden(ordenId);if(!o)return null;
+  o.cuerdas.push(cuerda);_crdRefoliar(o);crdGuardarOrden(o);return cuerda;
+}
+// Captura de A cuando la escala no traía BPHP (acepta BPHP o A directo)
+function crdCompletarA(ordenId,folio,{bphp,A}){
+  const o=crdGetOrden(ordenId),c=crdGetCuerda(o,folio);if(!c)return null;
+  const e=(c.elongacionPct||0)/100;
+  if(_crdNum(A)!=null)c.A=_crdR1(_crdNum(A));
+  else if(_crdNum(bphp)!=null){c.A=_crdR1((_crdNum(bphp)+(c.origenDatos?c.origenDatos.ENDS:0))/(1+e));if(c.origenDatos)c.origenDatos.BPHP=_crdNum(bphp);}
+  else return null;
+  c.B=_crdR1(c.A+c.H);c.faltaA=false;
+  if(c.doble){c.inicioE=_crdR1(c.A+c.awsm);c.finE=_crdR1(c.B-c.awsm);}
+  crdGuardarOrden(o);return c;
+}
+// Cambiar el cobre de una cuerda pendiente (opción de la sugerencia)
+function crdElegirCobre(ordenId,folio,op){
+  const o=crdGetOrden(ordenId),c=crdGetCuerda(o,folio);if(!c||c.estado==='hecha')return null;
+  _crdAplicarCobre(c,op);crdGuardarOrden(o);return c;
+}
+
+// ── Fabricación: hecha / corregir / rehacer ──
+function crdSemaforo(difMils){const a=Math.abs(difMils);return a<=1?'verde':a<=2?'ambar':'rojo';}
+function crdMarcarHecha(ordenId,folio,{odReal,odInteriorReal,D_loteId,E_loteId,F_loteId}={}){
+  const o=crdGetOrden(ordenId),c=crdGetCuerda(o,folio);
+  if(!c)return {error:'Cuerda no encontrada.'};
+  if(c.estado==='hecha')return {error:'La cuerda ya está hecha.'};
+  if(c.faltaA)return {error:'Falta capturar A.'};
+  const od=crdPulg(odReal),odi=crdPulg(odInteriorReal);
+  if(!(od>c.D&&od<.6))return {error:'Captura el OD real (pulgadas, ej. .061, o milésimas, ej. 61).'};
+  if(odi!=null&&!(odi>c.D&&odi<od))return {error:'El OD sobre cobre interior debe estar entre D y el OD real.'};
+  if(D_loteId!=null)c.D_loteId=D_loteId;
+  if(E_loteId!=null)c.E_loteId=E_loteId;
+  if(F_loteId!=null)c.F_loteId=F_loteId;
+  const hoy=new Date().toISOString().split('T')[0];
+  c.estado='hecha';c.fechaHecha=hoy;c.odReal=od;c.odInteriorReal=odi;
+  const base={fecha:hoy,ordenId:o.id,folioCuerda:c.folio,D:c.D,D_ef:crdDEf(c),D_loteId:c.D_loteId,descartada:false};
+  state.combinacionesCobre.push(Object.assign({id:nextId(),capa:c.doble?'doble':'sencilla',
+    E_cal:c.E_cal,E_loteId:c.E_loteId,F_cal:c.F_cal,F_loteId:c.F_loteId,odCalculado:c.odCalc,odReal:od},base));
+  if(c.doble&&odi!=null)
+    state.combinacionesCobre.push(Object.assign({id:nextId(),capa:'interior',E_cal:c.E_cal,E_loteId:c.E_loteId,F_cal:null,F_loteId:null,
+      odCalculado:+crdOdCalc(crdDEf(c),c.E_diam,0).toFixed(4),odReal:odi},base));
+  const prev=o.estado;o.estado=crdEstadoOrden(o);
+  if(o.estado==='terminada'&&prev!=='terminada')o.fechaTerminada=hoy;
+  crdGuardarOrden(o);
+  const difMils=+((od-c.odObj)*1000).toFixed(1);
+  return {cuerda:c,difMils,semaforo:crdSemaforo(difMils)};
+}
+function _crdCombosVivos(o,c){return state.combinacionesCobre.filter(r=>r.ordenId===o.id&&r.folioCuerda===c.folio&&!r.descartada);}
+function crdCorregirOdReal(ordenId,folio,{odReal,odInteriorReal}={}){
+  const o=crdGetOrden(ordenId),c=crdGetCuerda(o,folio);if(!c||c.estado!=='hecha')return {error:'Solo se corrige una cuerda hecha.'};
+  const od=crdPulg(odReal);if(!(od>c.D&&od<.6))return {error:'OD real inválido.'};
+  c.odReal=od;
+  _crdCombosVivos(o,c).forEach(r=>{if(r.capa!=='interior'){r.odReal=od;r.updatedAt=Date.now();}});
+  if(odInteriorReal!==undefined){
+    const odi=crdPulg(odInteriorReal);c.odInteriorReal=odi;
+    _crdCombosVivos(o,c).forEach(r=>{if(r.capa==='interior'){r.odReal=odi;r.updatedAt=Date.now();}});
+  }
+  crdGuardarOrden(o);return {cuerda:c};
+}
+function crdRehacer(ordenId,folio){
+  const o=crdGetOrden(ordenId),c=crdGetCuerda(o,folio);if(!c)return null;
+  _crdCombosVivos(o,c).forEach(r=>{r.descartada=true;r.updatedAt=Date.now();});
+  c.estado='pendiente';c.fechaHecha=null;c.odReal=null;c.odInteriorReal=null;
+  if(o.estado==='terminada'){o.estado='fabricacion';o.fechaTerminada=null;}
+  crdGuardarOrden(o);return c;
+}
+
+// ── Materiales: metros de alambre por calibre (vueltas × π × diámetro de la hélice) ──
+function crdMetrosCuerda(c){
+  if(!c||!c.F_diam||!c.H)return [];
+  const mm=v=>v*CRD_IN,D=mm(crdDEf(c)),F=mm(c.F_diam),m=(L,w,base)=>L/w*Math.PI*(base+w)/1000;
+  if(!c.doble)return [{cal:c.F_cal,loteId:c.F_loteId,metros:m(c.H,F,D)}];
+  const E=mm(c.E_diam||0),Li=c.H-2*(c.awsm||13);
+  return [{cal:c.E_cal,loteId:c.E_loteId,metros:m(Li,E,D)},
+          {cal:c.F_cal,loteId:c.F_loteId,metros:m(Li,F,D+2*E)+m(2*(c.awsm||13),F,D)}];
+}
+function crdMaterialesOrden(o){
+  const tot={},pend={};
+  (o.cuerdas||[]).forEach(c=>crdMetrosCuerda(c).forEach(r=>{
+    tot[r.cal]=(tot[r.cal]||0)+r.metros;
+    if(c.estado!=='hecha')pend[r.cal]=(pend[r.cal]||0)+r.metros;
+  }));
+  const fmt=x=>Object.keys(x).sort((a,b)=>x[b]-x[a]).map(k=>({cal:k,metros:+x[k].toFixed(1)}));
+  return {total:fmt(tot),pendiente:fmt(pend),totalMetros:+Object.values(tot).reduce((s,v)=>s+v,0).toFixed(1)};
+}
+
+// ── Consultas para las pantallas ──
+function crdResumenOrden(o){
+  const cs=o.cuerdas||[];
+  return {total:cs.length,hechas:cs.filter(c=>c.estado==='hecha').length,faltaA:cs.filter(c=>c.faltaA).length};
+}
+// Lista global: todas las cuerdas de todas las órdenes (filtro: 'pendientes' | 'hechas' | 'todas')
+function crdCuerdasGlobal(filtro='pendientes'){
+  const out=[];
+  (state.ordenesCuerdas||[]).forEach(o=>{
+    const cli=getCliente(o.clienteId),pia=getPiano(o.clienteId,o.pianoId);
+    (o.cuerdas||[]).forEach(c=>{
+      if(filtro==='pendientes'&&c.estado==='hecha')return;
+      if(filtro==='hechas'&&c.estado!=='hecha')return;
+      out.push({orden:o,cuerda:c,cliente:cli||null,piano:pia||null});
+    });
+  });
+  return out;
+}
+function crdOrdenesPiano(clienteId,pianoId){
+  return (state.ordenesCuerdas||[]).filter(o=>o.clienteId===clienteId&&o.pianoId===pianoId)
+    .sort((a,b)=>(b.fechaCreada||'').localeCompare(a.fechaCreada||''));
+}
+
+// ── Puente al presupuesto (precios del cotizador: CUE_CATS · getCueAnchor · getCueFactor) ──
+// Categoría del cotizador según el tipo y subtipo del piano
+function crdCatCotizador(piano){
+  const t=piano&&/cola|grand/i.test(piano.tipo||'')?'cola':'vertical',s=String(piano&&piano.subtipo||'');
+  let id;
+  if(t==='vertical')id=/profesional/i.test(s)?'pro':/estudio/i.test(s)?'est':/consola/i.test(s)?'con':/espin/i.test(s)?'esp':'est';
+  else id=/9 pies|concert\)/i.test(s)?'con':/7 pies|semi/i.test(s)?'par':/baby/i.test(s)?'baby':'med';
+  return {tipo:t,catId:id};
+}
+// Tipo de precio de una cuerda: las dobles son 'dw'; las sencillas por posición según la categoría
+function crdTipoPrecio(c,cat){
+  if(c.doble)return 'dw';
+  const t=detectTipoCuerda(c.nota,cat);
+  return t==='dw'?'bass':t;
+}
+// Conceptos agrupados por tipo de precio: [{tipoCuerda,label,cant,notas:[min,max],precioUnit,precio}]
+function crdConceptosOrden(o,tipo,catId){
+  const cats=CUE_CATS[tipo]||CUE_CATS.vertical,cat=cats.find(c=>c.id===catId)||cats[0];
+  const anchor=getCueAnchor(tipo,cat.id),g={};
+  (o.cuerdas||[]).forEach(c=>{
+    const t=crdTipoPrecio(c,cat);
+    if(!g[t])g[t]={tipoCuerda:t,label:tipoCuerdaLabel(t),cant:0,notas:[c.nota,c.nota],precioUnit:Math.round(anchor*getCueFactor(t))};
+    g[t].cant++;g[t].notas[0]=Math.min(g[t].notas[0],c.nota);g[t].notas[1]=Math.max(g[t].notas[1],c.nota);
+  });
+  return ['dw','bass','mid','high'].filter(k=>g[k]).map(k=>{const x=g[k];x.precio=x.precioUnit*x.cant;
+    x.nombre=`${x.cant}× Cuerda ${x.label} · notas ${x.notas[0]===x.notas[1]?x.notas[0]:x.notas[0]+'–'+x.notas[1]} (${cat.label}) · ${o.folio}`;return x;});
+}
+// ══════════════════════════════════════════════════════════
+// MÓDULO CUERDAS — v3.6.1 · Etapas 2 y 3: pantallas y ficha de taller
+// ══════════════════════════════════════════════════════════
+const _crdIn=v=>v==null||isNaN(v)?'—':Number(v).toFixed(3).replace(/^0/,'');
+const _crdIn4=v=>v==null||isNaN(v)||v===''?'—':Number(v).toFixed(4).replace(/^0/,'');
+const _crdMm=v=>v==null||isNaN(v)?'—':Number(v).toFixed(1);
+const _crdEsc=t=>String(t==null?'':t).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+const _CRD_SEM={verde:'var(--success)',ambar:'var(--warning)',rojo:'var(--danger)'};
+const _CRD_EST={borrador:['Borrador','tag-gray'],fabricacion:['En fabricación','tag-yellow'],terminada:['Terminada','tag-green'],instalada:['Instalada','tag-blue']};
+function _crdIcono(c){return c.estado==='hecha'?'✅':c.faltaA?'⚠️':'⬜';}
+function _crdCobreTxt(c){return c.material!=='cobre'?c.material.toUpperCase():(c.E_cal?`E ${c.E_cal} + F ${c.F_cal}`:c.F_cal?`F ${c.F_cal}`:'Sin cobre');}
+function _crdPianoTxt(o){const cli=getCliente(o.clienteId),p=getPiano(o.clienteId,o.pianoId);return `${cli?_crdEsc(cli.nombre):'Cliente eliminado'}${p?' · '+_crdEsc(p.marca+' '+p.modelo):''}`;}
+function _crdOdTxt(c){
+  if(c.estado!=='hecha'||c.odReal==null)return '';
+  const d=(c.odReal-c.odObj)*1000,col=_CRD_SEM[crdSemaforo(d)];
+  return `<span style="color:${col};font-weight:700">OD ${_crdIn(c.odObj)} → ${_crdIn(c.odReal)}</span>`;
+}
+function _crdRefrescar(){if(typeof currentScreen!=='undefined'&&currentScreen==='cuerdas')renderCuerdas();}
+
+// ── Fila de cuerda (lista global y detalle de orden) ──
+function _crdFilaCuerda(o,c){
+  return `<div style="display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--border)">
+    <span style="font-size:15px">${_crdIcono(c)}</span>
+    <div style="flex:1;min-width:0">
+      <div style="font-size:13px"><a href="#" onclick="event.preventDefault();crdModalFicha('${o.id}','${c.folio}')" style="color:var(--primary);font-weight:700;text-decoration:underline">${c.folio.slice(-2)}</a>
+        <b style="margin-left:4px">${c.nota}-${c.cuerda}</b> <span style="color:var(--text2);font-size:11px">${c.tipo}</span></div>
+      <div style="font-size:11px;color:var(--text2)">D ${_crdIn(c.D)} · ${_crdCobreTxt(c)}${c.faltaA?' · <b style="color:var(--warning)">Falta A</b>':''}</div>
+    </div>
+    <div style="text-align:right;font-size:12px;flex-shrink:0">
+      <div>A ${_crdMm(c.A)} · H ${_crdMm(c.H)}</div>
+      <div style="font-size:11px">${_crdOdTxt(c)||'<span style="color:var(--text3)">OD '+_crdIn(c.odObj)+'</span>'}</div>
+    </div>
+  </div>`;
+}
+function _crdBarra(o){
+  const r=crdResumenOrden(o),pct=r.total?Math.round(r.hechas/r.total*100):0;
+  return `<div style="height:6px;background:var(--bg);border-radius:3px;margin:6px 0 3px"><div style="width:${pct}%;height:6px;background:var(--success);border-radius:3px"></div></div>
+  <div style="font-size:11px;color:var(--text2)">${r.hechas} de ${r.total} hechas${r.faltaA?` · <b style="color:var(--warning)">${r.faltaA} sin A</b>`:''}</div>`;
+}
+function _crdSegmento(actual,fn){
+  return `<div class="segment" style="margin:8px 0">${[['pendientes','Pendientes'],['hechas','Hechas'],['todas','Todas']].map(([k,l])=>
+    `<button class="seg-btn ${actual===k?'active':''}" onclick="${fn}('${k}')">${l}</button>`).join('')}</div>`;
+}
+
+// ══ PANTALLA: LISTA GLOBAL "CUERDAS" ══
+let _crdFiltroGlobal='pendientes';
+function crdSetFiltroGlobal(f){_crdFiltroGlobal=f;renderCuerdas();}
+function renderCuerdas(){
+  const el=document.getElementById('screen-cuerdas');if(!el)return;
+  const items=crdCuerdasGlobal(_crdFiltroGlobal);
+  const pend=crdCuerdasGlobal('pendientes').length;
+  const grupos=[];
+  items.forEach(it=>{let g=grupos.find(x=>x.orden===it.orden);if(!g){g={orden:it.orden,cuerdas:[]};grupos.push(g);}g.cuerdas.push(it.cuerda);});
+  grupos.sort((a,b)=>(b.orden.fechaCreada||'').localeCompare(a.orden.fechaCreada||''));
+  el.innerHTML=`
+  <div class="page-header">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start">
+      <div><div class="page-title">🎼 Cuerdas</div><div class="page-sub">${pend} pendiente${pend===1?'':'s'} · ${(state.ordenesCuerdas||[]).length} orden${(state.ordenesCuerdas||[]).length===1?'':'es'}</div></div>
+      <button class="btn btn-primary btn-sm" onclick="crdModalNuevaOrden()">+ Nueva orden</button>
+    </div>
+    ${_crdSegmento(_crdFiltroGlobal,'crdSetFiltroGlobal')}
+  </div>
+  <div style="padding:12px 0">
+  ${grupos.length?grupos.map(g=>{const o=g.orden,[el2,cls]=_CRD_EST[o.estado]||_CRD_EST.borrador;
+    return `<div class="card">
+      <div style="cursor:pointer" onclick="crdModalOrden('${o.id}')">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+          <div><b>${o.folio}</b> <span style="font-size:12px;color:var(--text2)">${_crdPianoTxt(o)}</span></div>
+          <span class="tag ${cls}">${el2}</span>
+        </div>
+        ${_crdBarra(o)}
+      </div>
+      ${g.cuerdas.map(c=>_crdFilaCuerda(o,c)).join('')}
+    </div>`;}).join(''):
+    `<div class="card" style="text-align:center;color:var(--text2);padding:24px;font-size:14px">
+      ${_crdFiltroGlobal==='pendientes'?'Sin cuerdas pendientes 🎉':'Sin cuerdas en esta vista.'}<br>
+      <span style="font-size:12px">Crea una orden con "+ Nueva orden" o desde la ficha del piano.</span></div>`}
+  </div>`;
+}
+
+// ══ SECCIÓN EN LA FICHA DEL PIANO ══
+function crdSeccionPiano(clienteId,pianoId){
+  const os=crdOrdenesPiano(clienteId,pianoId);
+  return `<div class="modal-sub">🎼 Cuerdas${os.length?` (${os.length})`:''}</div>
+  ${os.map(o=>{const r=crdResumenOrden(o),[l,cls]=_CRD_EST[o.estado]||_CRD_EST.borrador;
+    return `<div class="list-item" onclick="crdModalOrden('${o.id}')">
+      <div style="flex:1"><div class="item-title">${o.folio} <span style="font-size:11px;color:var(--text2);font-weight:400">${o.origen==='pscale'?'Pscale · '+_crdEsc(o.escala&&o.escala.nombre||''):'Cuerda física'}</span></div>
+      <div class="item-sub">${fmtDate(o.fechaCreada)} · ${r.hechas}/${r.total} hechas</div></div>
+      <span class="tag ${cls}">${l}</span></div>`;}).join('')}
+  <button class="btn btn-outline btn-full btn-sm" style="margin-top:6px" onclick="crdModalNuevaOrden(${clienteId},${pianoId})">+ Nueva orden de cuerdas</button>`;
+}
+
+// ══ NUEVA ORDEN: elegir cliente/piano y escenario ══
+function crdModalNuevaOrden(clienteId,pianoId){
+  crdLiberarPantalla();
+  if(clienteId==null||pianoId==null){
+    if(!state.clientes.length){showToast('Primero registra un cliente');return;}
+    const cOpts=state.clientes.map(c=>`<option value="${c.id}">${_crdEsc(c.nombre)}</option>`).join('');
+    openModal(`<div class="modal-title">Nueva orden de cuerdas</div>
+    <div class="input-group"><label class="input-label">Cliente</label>
+      <select class="input select" id="crd-no-c" onchange="crdNoPianos()">${cOpts}</select></div>
+    <div class="input-group"><label class="input-label">Piano</label><select class="input select" id="crd-no-p"></select></div>
+    <button class="btn btn-primary btn-full" onclick="const c=+document.getElementById('crd-no-c').value,p=+document.getElementById('crd-no-p').value;if(!p){showToast('El cliente no tiene pianos');return;}crdModalNuevaOrden(c,p)">Continuar</button>`);
+    crdNoPianos();return;
+  }
+  const cli=getCliente(clienteId),p=getPiano(clienteId,pianoId);
+  openModal(`<div class="modal-title">Nueva orden de cuerdas</div>
+  <div style="font-size:13px;color:var(--text2);margin-bottom:12px">${cli?_crdEsc(cli.nombre):''}${p?' · '+_crdEsc(p.marca+' '+p.modelo):''}</div>
+  <button class="card" style="width:100%;margin:0 0 10px;text-align:left;border:1.5px solid var(--border);cursor:pointer" onclick="crdModalCaptura(null,${clienteId},${pianoId})">
+    <div style="font-weight:700;font-size:15px">📏 Cuerda física</div>
+    <div style="font-size:12px;color:var(--text2);margin-top:2px">Medir la muestra: D, OD/F, E, G, A, B, H</div></button>
+  <button class="card" style="width:100%;margin:0;text-align:left;border:1.5px solid var(--border);cursor:pointer" onclick="crdModalImportar(${clienteId},${pianoId})">
+    <div style="font-weight:700;font-size:15px">📥 Importar escala Pscale</div>
+    <div style="font-size:12px;color:var(--text2);margin-top:2px">Archivo .txt o pegar su contenido</div></button>`);
+}
+function crdNoPianos(){
+  const c=getCliente(+document.getElementById('crd-no-c').value),sel=document.getElementById('crd-no-p');
+  sel.innerHTML=c&&c.pianos.length?c.pianos.map(p=>`<option value="${p.id}">${_crdEsc(p.marca+' '+p.modelo)} (${p.tipo})</option>`).join(''):'<option value="">Sin pianos</option>';
+}
+
+// ══ ESCENARIO 2: IMPORTAR PSCALE ══
+let _crdPrep=null;
+function crdModalImportar(clienteId,pianoId){
+  _crdPrep=null;
+  openModal(`<div class="modal-title">📥 Importar escala Pscale</div>
+  <div class="input-group"><label class="input-label">Archivo .txt</label>
+    <input type="file" accept=".txt,text/plain" class="input" onchange="crdLeerArchivo(this)"></div>
+  <div class="input-group"><label class="input-label">… o pega el contenido</label>
+    <textarea class="input" id="crd-imp-txt" rows="4" placeholder="NOMBRE^.89^13]88,TP,…" style="font-family:monospace;font-size:12px"></textarea></div>
+  <button class="btn btn-primary btn-full" onclick="crdVistaPrevia(${clienteId},${pianoId})">Vista previa</button>
+  <div id="crd-imp-prev" style="margin-top:12px"></div>`);
+}
+function crdLeerArchivo(inp){
+  const f=inp.files&&inp.files[0];if(!f)return;
+  const r=new FileReader();r.onload=e=>{document.getElementById('crd-imp-txt').value=e.target.result;};r.readAsText(f);
+}
+function crdVistaPrevia(clienteId,pianoId){
+  const txt=document.getElementById('crd-imp-txt').value,box=document.getElementById('crd-imp-prev');
+  const r=crdPrepararOrdenPscale(txt,clienteId,pianoId);
+  if(r.error){_crdPrep=null;box.innerHTML=`<div style="background:var(--danger-light);color:var(--danger);border-radius:8px;padding:10px;font-size:13px">${_crdEsc(r.error)}</div>`;return;}
+  _crdPrep=r;const o=r.orden;
+  box.innerHTML=`<div class="modal-sub">Vista previa · ${_crdEsc(o.escala.nombre)}</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:10px;text-align:center">
+    <div class="stat-card" style="padding:8px;background:var(--bg)"><div class="stat-num" style="font-size:20px">${r.resumen.cuerdas}</div><div class="stat-label">Cuerdas</div></div>
+    <div class="stat-card" style="padding:8px;background:var(--bg)"><div class="stat-num" style="font-size:20px;color:${r.resumen.faltaA?'var(--warning)':'var(--success)'}">${r.resumen.faltaA}</div><div class="stat-label">Falta A</div></div>
+    <div class="stat-card" style="padding:8px;background:var(--bg)"><div class="stat-num" style="font-size:20px;color:${r.resumen.avisos.length?'var(--warning)':'var(--success)'}">${r.resumen.avisos.length}</div><div class="stat-label">Avisos</div></div>
+  </div>
+  ${r.resumen.avisos.length?`<div style="background:var(--warning-light);border-radius:8px;padding:8px 10px;margin-bottom:10px;font-size:12px;color:var(--text)">
+    ${r.resumen.avisos.map(a=>`<div>⚠️ ${a.nota?'Nota '+a.nota+': ':''}${_crdEsc(a.txt)}</div>`).join('')}</div>`:''}
+  <div style="max-height:220px;overflow-y:auto;font-size:12px;border:1px solid var(--border);border-radius:8px;padding:0 8px">
+    ${o.cuerdas.map(c=>`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border)">
+      <span>${_crdIcono(c)} <b>${c.nota}-${c.cuerda}</b> ${c.tipo} · ${_crdCobreTxt(c)}</span><span>A ${_crdMm(c.A)} · H ${_crdMm(c.H)}</span></div>`).join('')}
+  </div>
+  <button class="btn btn-success btn-full" style="margin-top:12px" onclick="crdCrearDesdePrevia()">Crear orden (${r.resumen.cuerdas} cuerdas)</button>`;
+}
+function crdCrearDesdePrevia(){
+  if(!_crdPrep||!_crdPrep.orden)return;
+  const o=crdGuardarOrden(_crdPrep.orden);_crdPrep=null;
+  showToast(`Orden ${o.folio} creada ✓`);_crdRefrescar();crdModalOrden(o.id);
+}
+
+// ══ ESCENARIO 1: CAPTURA DE CUERDA FÍSICA ══
+let _crdCap={ordenId:null,clienteId:null,pianoId:null,firmaAvisos:''};
+function crdModalCaptura(ordenId,clienteId,pianoId,pre){
+  crdLiberarPantalla();
+  const o=ordenId!=null?crdGetOrden(ordenId):null;
+  _crdCap={ordenId:o?o.id:null,clienteId:o?o.clienteId:clienteId,pianoId:o?o.pianoId:pianoId,firmaAvisos:''};
+  pre=pre||{};const cfg=crdCfg();
+  const cal=crdCalibresCobre();
+  const calOpts=sel=>`<option value="">${'Sugerir por OD'}</option>`+cal.map(c=>`<option value="${c.cal}" ${sel===c.cal?'selected':''}>${c.cal} · ${_crdIn(c.diam)}</option>`).join('');
+  const notaOpts=Array.from({length:40},(_,i)=>i+1).map(n=>`<option value="${n}" ${n===(pre.nota||1)?'selected':''}>${n} · ${notaNombre(n)}</option>`).join('');
+  const tipo=pre.tipo||'BS';
+  const fld=(id,lbl,val,ph,extra='')=>`<div class="input-group" style="margin-bottom:10px"><label class="input-label">${lbl}</label><input class="input" id="${id}" inputmode="decimal" value="${val!=null?val:''}" placeholder="${ph||''}" ${extra}></div>`;
+  openModal(`<div class="modal-title">📏 Cuerda física${o?' · '+o.folio:''}</div>
+  <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px">
+    <div class="input-group" style="margin-bottom:10px"><label class="input-label">Nota</label><select class="input select" id="crd-c-nota">${notaOpts}</select></div>
+    <div class="input-group" style="margin-bottom:10px"><label class="input-label">Cuerda</label><select class="input select" id="crd-c-cuerda">${[1,2,3].map(n=>`<option ${n===(pre.cuerda||1)?'selected':''}>${n}</option>`).join('')}</select></div>
+    <div class="input-group" style="margin-bottom:10px"><label class="input-label">Tipo</label><select class="input select" id="crd-c-tipo" onchange="crdCapTipo()">${Object.keys(CRD_TIPOS).map(t=>`<option ${t===tipo?'selected':''}>${t}</option>`).join('')}</select></div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+    ${fld('crd-c-D','D · núcleo',pre.D,'.041 o 41')}
+    ${fld('crd-c-od','OD',pre.odObj,'.112 o 112')}
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+    <div class="input-group" style="margin-bottom:10px"><label class="input-label">F · cobre</label><select class="input select" id="crd-c-F">${calOpts(pre.F_cal)}</select></div>
+    <div class="input-group" id="crd-c-Ebox" style="margin-bottom:10px;${CRD_TIPOS[tipo].doble?'':'display:none'}"><label class="input-label">E · cobre interior</label><select class="input select" id="crd-c-E">${calOpts(pre.E_cal)}</select></div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 2fr;gap:8px">
+    ${fld('crd-c-G','G (mm)',pre.G!=null?pre.G:cfg.gDefault,'39')}
+    <div class="input-group" style="margin-bottom:10px"><label class="input-label">Gaza</label><select class="input select" id="crd-c-gaza">${Object.keys(CRD_GAZAS).map(k=>`<option value="${k}" ${k===(pre.gaza||cfg.gaza)?'selected':''}>${CRD_GAZAS[k]}</option>`).join('')}</select></div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+    ${fld('crd-c-A','A (mm)',null,'')}
+    ${fld('crd-c-B','B (mm)',null,'')}
+    ${fld('crd-c-H','H (mm)',null,'B − A')}
+  </div>
+  <div id="crd-c-msg"></div>
+  <button class="btn btn-primary btn-full" onclick="crdGuardarCaptura(true)">Guardar y agregar otra</button>
+  <button class="btn btn-ghost btn-full" style="margin-top:6px" onclick="crdGuardarCaptura(false)">Guardar y terminar</button>
+  ${o?`<button class="btn btn-ghost btn-full btn-sm" style="margin-top:6px" onclick="crdModalOrden('${o.id}')">← Volver a la orden</button>`:''}`);
+}
+function crdCapTipo(){const t=document.getElementById('crd-c-tipo').value;document.getElementById('crd-c-Ebox').style.display=CRD_TIPOS[t].doble?'':'none';}
+function crdGuardarCaptura(otra){
+  const v=id=>document.getElementById(id).value;
+  const tipo=v('crd-c-tipo'),doble=CRD_TIPOS[tipo].doble;
+  const datos={nota:v('crd-c-nota'),cuerda:v('crd-c-cuerda'),tipo,doble,D:v('crd-c-D'),odObj:v('crd-c-od'),
+    F_cal:v('crd-c-F')||null,E_cal:doble?(v('crd-c-E')||null):null,G:v('crd-c-G'),gaza:v('crd-c-gaza'),A:v('crd-c-A'),B:v('crd-c-B'),H:v('crd-c-H')};
+  const r=crdCuerdaMuestra(datos),msg=document.getElementById('crd-c-msg');
+  if(r.errores.length){msg.innerHTML=`<div style="background:var(--danger-light);color:var(--danger);border-radius:8px;padding:8px 10px;margin-bottom:10px;font-size:12px">${r.errores.map(_crdEsc).join('<br>')}</div>`;return;}
+  // Avisos importantes (H vs B−A, OD vs cobre) piden un segundo toque para confirmar
+  const serios=r.avisos.filter(a=>!/^Cobre sugerido/.test(a)),firma=JSON.stringify(datos);
+  if(serios.length&&_crdCap.firmaAvisos!==firma){
+    _crdCap.firmaAvisos=firma;
+    msg.innerHTML=`<div style="background:var(--warning-light);border-radius:8px;padding:8px 10px;margin-bottom:10px;font-size:12px">${serios.map(a=>'⚠️ '+_crdEsc(a)).join('<br>')}<br><b>Toca guardar otra vez para confirmar.</b></div>`;return;
+  }
+  let o=_crdCap.ordenId!=null?crdGetOrden(_crdCap.ordenId):null;
+  if(!o){o=crdGuardarOrden(crdNuevaOrdenMuestra(_crdCap.clienteId,_crdCap.pianoId));_crdCap.ordenId=o.id;}
+  crdAgregarCuerda(o.id,r.cuerda);
+  showToast(`Cuerda ${r.cuerda.folio} guardada ✓${r.avisos.find(a=>/^Cobre sugerido/.test(a))?' · '+r.avisos.find(a=>/^Cobre sugerido/.test(a)):''}`,3500);
+  _crdRefrescar();
+  if(otra){const c=r.cuerda;crdModalCaptura(o.id,null,null,{nota:c.nota,cuerda:Math.min(3,c.cuerda+1),tipo:c.tipo,D:datos.D,G:c.G,gaza:c.gaza});}
+  else crdModalOrden(o.id);
+}
+
+// ══ DETALLE DE ORDEN ══
+let _crdFiltroOrden='todas';
+function crdModalOrden(id,filtro){
+  crdLiberarPantalla();
+  const o=crdGetOrden(id);if(!o){closeModal();showToast('La orden ya no existe');return;}
+  if(filtro)_crdFiltroOrden=filtro;
+  const cs=(o.cuerdas||[]).filter(c=>_crdFiltroOrden==='todas'||(_crdFiltroOrden==='hechas'?c.estado==='hecha':c.estado!=='hecha'));
+  const grupos=[];cs.forEach(c=>{let g=grupos.find(x=>x.nota===c.nota);if(!g){g={nota:c.nota,cs:[]};grupos.push(g);}g.cs.push(c);});
+  const [l,cls]=_CRD_EST[o.estado]||_CRD_EST.borrador;
+  openModal(`<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+    <div><div class="modal-title" style="margin-bottom:2px">${o.folio}</div>
+    <div style="font-size:12px;color:var(--text2)">${_crdPianoTxt(o)}</div>
+    <div style="font-size:11px;color:var(--text3)">${o.origen==='pscale'?'Pscale · '+_crdEsc(o.escala&&o.escala.nombre||''):'Cuerda física'} · ${fmtDate(o.fechaCreada)}</div></div>
+    <span class="tag ${cls}">${l}</span></div>
+  ${_crdBarra(o)}
+  ${_crdSegmento(_crdFiltroOrden,`crdModalOrden.bind(null,'${o.id}')`)}
+  <div>${grupos.length?grupos.map(g=>{const c0=g.cs[0];
+    return `<div style="font-size:11px;color:var(--text2);background:var(--bg);padding:4px 8px;border-radius:6px;margin-top:8px">Nota ${g.nota} · ${c0.tipo} · D ${_crdIn(c0.D)} · ${_crdCobreTxt(c0)}${c0.doble?' · E '+_crdMm(c0.largoE):''}</div>
+      ${g.cs.map(c=>_crdFilaCuerda(o,c)).join('')}`;}).join(''):'<div style="text-align:center;color:var(--text2);padding:16px;font-size:13px">Sin cuerdas en esta vista.</div>'}</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px">
+    <button class="btn btn-ghost btn-sm" onclick="crdModalMateriales('${o.id}')">📦 Materiales</button>
+    <button class="btn btn-ghost btn-sm" onclick="crdModalCaptura('${o.id}')">+ Agregar cuerda</button>
+  </div>
+  <button class="btn btn-outline btn-full btn-sm" style="margin-top:8px" onclick="crdModalPresupuesto('${o.id}')">🧾 ${o.presupuestoId?'Presupuesto ✓':'Generar presupuesto'}</button>
+  ${o.estado==='terminada'?`<button class="btn btn-outline btn-full btn-sm" style="margin-top:8px" onclick="crdMarcarInstalada('${o.id}')">✓ Marcar como instalada</button>`:''}
+  <button class="btn btn-ghost btn-full btn-sm" style="margin-top:8px" onclick="closeModal();showModalPiano(${o.clienteId},${o.pianoId})">Ver piano</button>
+  <button class="btn btn-ghost btn-full btn-sm" style="margin-top:6px;color:var(--danger)" onclick="crdConfirmarEliminar('${o.id}')">🗑 Eliminar orden</button>`);
+}
+function crdMarcarInstalada(id){const o=crdGetOrden(id);if(!o)return;o.estado='instalada';crdGuardarOrden(o);showToast('Orden instalada ✓');_crdRefrescar();crdModalOrden(id);}
+function crdConfirmarEliminar(id){
+  const o=crdGetOrden(id);if(!o)return;
+  if(!confirm(`¿Eliminar la orden ${o.folio} y sus ${o.cuerdas.length} cuerdas? El registro de combinaciones se conserva.`))return;
+  crdEliminarOrden(o.id);closeModal();showToast('Orden eliminada');_crdRefrescar();
+}
+function crdModalMateriales(id){
+  crdLiberarPantalla();const o=crdGetOrden(id);if(!o)return;const m=crdMaterialesOrden(o);
+  const tabla=arr=>arr.length?arr.map(r=>`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:13px"><span>${r.cal}</span><b>${_crdMm(r.metros)} m</b></div>`).join(''):'<div style="font-size:12px;color:var(--text3);padding:6px 0">Nada pendiente.</div>';
+  openModal(`<div class="modal-title">📦 Materiales · ${o.folio}</div>
+  <div style="font-size:12px;color:var(--text2);margin-bottom:8px">Metros de cobre sin merma (vueltas × π × diámetro de la hélice).</div>
+  <div class="modal-sub">Pendiente de fabricar</div>${tabla(m.pendiente)}
+  <div class="modal-sub">Orden completa · ${_crdMm(m.totalMetros)} m</div>${tabla(m.total)}
+  <button class="btn btn-ghost btn-full btn-sm" style="margin-top:12px" onclick="crdModalOrden('${o.id}')">← Volver a la orden</button>`);
+}
+
+// ══ FICHA DE TALLER ══
+let _crdWake=null;
+async function crdMantenerPantalla(){
+  window._crdFichaAbierta=true;
+  try{if('wakeLock' in navigator&&!_crdWake){_crdWake=await navigator.wakeLock.request('screen');_crdWake.addEventListener('release',()=>{_crdWake=null;_crdWakeInd();});}}catch(e){_crdWake=null;}
+  _crdWakeInd();
+}
+function crdLiberarPantalla(){window._crdFichaAbierta=false;if(_crdWake){try{_crdWake.release();}catch(e){}_crdWake=null;}}
+function _crdWakeInd(){const el=document.getElementById('crd-wake');if(el)el.innerHTML=_crdWake?'☀️ Pantalla activa':'<span style="color:var(--text3)">La pantalla puede apagarse</span>';}
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&window._crdFichaAbierta)crdMantenerPantalla();});
+
+// Dibujo de la guía con las medidas reales
+function crdSvgCuerda(c){
+  const T='font-size="11" fill="var(--text)" font-family="inherit"',L='stroke="var(--text2)" stroke-width="1"';
+  const dim=(x1,x2,y,txt)=>`<line x1="${x1}" y1="${y}" x2="${x2}" y2="${y}" ${L}/><line x1="${x1}" y1="${y-4}" x2="${x1}" y2="${y+4}" ${L}/><line x1="${x2}" y1="${y-4}" x2="${x2}" y2="${y+4}" ${L}/><text x="${(x1+x2)/2}" y="${y-5}" text-anchor="middle" ${T} font-weight="700">${txt}</text>`;
+  const cu='#d08a4a',cuOsc='#a8622a',y=58;
+  const wrap=c.doble
+    ?`<rect x="90" y="${y-4}" width="180" height="8" rx="2" fill="${cu}"/><rect x="104" y="${y-7}" width="152" height="14" rx="2" fill="${cuOsc}"/>
+      <text x="97" y="${y+17}" text-anchor="middle" font-size="9" fill="var(--text2)">${c.awsm||13}</text><text x="263" y="${y+17}" text-anchor="middle" font-size="9" fill="var(--text2)">${c.awsm||13}</text>
+      <text x="180" y="${y+3}" text-anchor="middle" font-size="9" font-weight="700" fill="#fff">E + F</text>`
+    :`<rect x="90" y="${y-6}" width="180" height="12" rx="2" fill="${cu}"/>`;
+  return `<svg viewBox="0 0 340 ${c.doble?150:132}" width="100%" style="display:block;margin:4px 0">
+    ${dim(14,40,20,'G '+_crdMm(c.G))}${dim(90,270,36,'H '+_crdMm(c.H))}
+    <ellipse cx="14" cy="${y}" rx="9" ry="5" fill="none" stroke="var(--text2)" stroke-width="1.5"/>
+    <path d="M23 ${y} l3 -4 l4 8 l4 -8 l4 8 l2 -4" fill="none" stroke="var(--text2)" stroke-width="1.5"/>
+    <line x1="40" y1="${y}" x2="334" y2="${y}" stroke="var(--text2)" stroke-width="1.5"/>
+    ${wrap}
+    ${dim(5,90,88,'A '+_crdMm(c.A))}${dim(5,270,112,'B '+_crdMm(c.B))}
+    ${c.doble?`<text x="180" y="138" text-anchor="middle" ${T}>F = H · E ${_crdMm(c.largoE)} (de ${_crdMm(c.inicioE)} a ${_crdMm(c.finE)})</text>`:''}
+  </svg>`;
+}
+function crdModalFicha(ordenId,folio){
+  const o=crdGetOrden(ordenId),c=crdGetCuerda(o,folio);if(!c){showToast('Cuerda no encontrada');return;}
+  const i=o.cuerdas.indexOf(c),prev=o.cuerdas[i-1],next=o.cuerdas[i+1];
+  const hecha=c.estado==='hecha',cfg=crdCfg();
+  const lD=crdGetLote(c.D_loteId),lE=crdGetLote(c.E_loteId),lF=crdGetLote(c.F_loteId);
+  const big=(k,v)=>`<div style="border:1px solid var(--border);border-radius:10px;padding:8px 10px"><div style="font-size:11px;color:var(--text2)">${k}</div><div style="font-size:24px;font-weight:800;line-height:1.1">${v}</div></div>`;
+  // Opciones de cobre (solo pendientes)
+  let cobreHtml='';
+  if(!hecha&&c.material==='cobre'&&c.odObj>c.D){
+    const sug=crdSugerirCobre(crdDEf(c),c.odObj,c.doble);
+    if(sug)cobreHtml=`<div class="modal-sub">Cobre</div><div style="display:flex;gap:6px;flex-wrap:wrap">${sug.opciones.map((op,k)=>{
+      const act=op.F_cal===c.F_cal&&(op.E_cal||null)===(c.E_cal||null);
+      return `<button class="btn btn-sm ${act?'btn-primary':'btn-ghost'}" style="flex:1;flex-direction:column;align-items:flex-start;white-space:normal" onclick='crdElegirCobre("${o.id}","${c.folio}",${JSON.stringify(op)});crdModalFicha("${o.id}","${c.folio}")'>
+        <span>${op.E_cal?op.E_cal+' + ':''}${op.F_cal}</span><span style="font-size:11px;font-weight:400">${_crdIn(op.odCalc)} calc (${op.dif>0?'+':''}${(op.dif*1000).toFixed(1)})${op.real?` · ${_crdIn(op.real.avg)} real (${op.real.n})`:''}</span></button>`;}).join('')}</div>`;
+  }
+  // Lotes: solo si hay más de uno del mismo calibre / diámetro
+  const loteSel=(id,lotes,sel)=>lotes.length>1?`<select class="input select" id="${id}" style="margin-top:4px">${lotes.map(l=>`<option value="${l.id}" ${String(l.id)===String(sel)?'selected':''}>${_crdEsc(l.clave)}${l.marca?' · '+_crdEsc(l.marca):''}</option>`).join('')}</select>`:'';
+  const lotesCal=cal=>crdLotes('cobre').filter(l=>crdCalLabel(l)===cal);
+  const lotesD=crdLotes('acero').filter(l=>Math.abs(crdDiamLote(l)-c.D)<=cfg.tolLoteAcero);
+  const faltaHtml=c.faltaA?`<div style="background:var(--warning-light);border-radius:8px;padding:10px;margin:8px 0">
+    <div style="font-weight:700;font-size:13px;margin-bottom:6px">⚠️ Falta A: la escala no trae BPHP para esta cuerda</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+      <input class="input" id="crd-f-bphp" inputmode="decimal" placeholder="BPHP (mm)"><input class="input" id="crd-f-A" inputmode="decimal" placeholder="o A directo"></div>
+    <button class="btn btn-primary btn-full btn-sm" style="margin-top:6px" onclick="crdGuardarFaltaA('${o.id}','${c.folio}')">Guardar A</button></div>`:'';
+  let pie;
+  if(hecha){
+    const d=(c.odReal-c.odObj)*1000,col=_CRD_SEM[crdSemaforo(d)];
+    pie=`<div style="border:2px solid ${col};border-radius:10px;padding:10px;margin-top:10px;text-align:center">
+      <div style="font-size:12px;color:var(--text2)">✅ Hecha el ${fmtDate(c.fechaHecha)}</div>
+      <div style="font-size:20px;font-weight:800;color:${col}">OD ${_crdIn(c.odObj)} → ${_crdIn(c.odReal)}</div>
+      <div style="font-size:12px;color:${col}">${d>0?'+':''}${d.toFixed(1)} milésimas${c.odInteriorReal?` · OD sobre E ${_crdIn(c.odInteriorReal)}`:''}</div></div>
+    <details style="margin-top:8px"><summary style="font-size:12px;color:var(--text2);cursor:pointer">Más acciones</summary>
+      <div style="display:flex;gap:6px;margin-top:6px"><input class="input" id="crd-f-corr" inputmode="decimal" placeholder="OD real corregido" style="flex:1">
+      <button class="btn btn-ghost btn-sm" onclick="crdAccionCorregir('${o.id}','${c.folio}')">Corregir</button></div>
+      <button class="btn btn-ghost btn-full btn-sm" style="margin-top:6px;color:var(--danger)" onclick="crdAccionRehacer('${o.id}','${c.folio}')">↺ Rehacer cuerda</button></details>`;
+  }else if(!c.faltaA&&c.material==='cobre'){
+    pie=`<div class="modal-sub">Terminar</div>
+    <div style="display:grid;grid-template-columns:${c.doble?'1fr 1fr':'1fr'};gap:8px">
+      <div><label class="input-label">OD real *</label><input class="input" id="crd-f-od" inputmode="decimal" placeholder=".${String(Math.round(c.odObj*1000)).padStart(3,'0')} o ${Math.round(c.odObj*1000)}" oninput="crdValidarOd(${c.D})" style="font-size:18px;font-weight:700"></div>
+      ${c.doble?`<div><label class="input-label">OD sobre E (opc.)</label><input class="input" id="crd-f-odi" inputmode="decimal" placeholder="opcional"></div>`:''}
+    </div>
+    ${loteSel('crd-f-lD',lotesD,c.D_loteId)}${c.E_cal?loteSel('crd-f-lE',lotesCal(c.E_cal),c.E_loteId):''}${c.F_cal?loteSel('crd-f-lF',lotesCal(c.F_cal),c.F_loteId):''}
+    <div id="crd-f-err" style="font-size:12px;color:var(--danger);min-height:16px;margin-top:4px"></div>
+    <button class="btn btn-success btn-full" id="crd-f-ok" disabled style="opacity:.45;font-size:16px;padding:13px" onclick="crdAccionHecha('${o.id}','${c.folio}')">✓ Hecha</button>`;
+  }else pie='';
+  openModal(`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+    <div><div style="font-size:12px;color:var(--text2)">${c.folio} · ${_crdPianoTxt(o)}</div>
+    <div style="font-size:22px;font-weight:800">${c.nota}-${c.cuerda} <span style="font-size:14px;font-weight:600;color:var(--text2)">${c.tipo} · ${notaNombre(c.nota)}</span></div></div>
+    <span class="tag ${c.material==='cobre'?'tag-yellow':'tag-red'}">${c.material==='cobre'?'Cobre':c.material.toUpperCase()}</span></div>
+  ${c.avisos&&c.avisos.length?`<div style="background:var(--warning-light);border-radius:8px;padding:6px 10px;margin:8px 0;font-size:12px">${c.avisos.map(a=>'⚠️ '+_crdEsc(a)).join('<br>')}</div>`:''}
+  ${faltaHtml}
+  ${crdSvgCuerda(c)}
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">${big('G · gaza',_crdMm(c.G))}${big('A',_crdMm(c.A))}${big('B',_crdMm(c.B))}${big('H',_crdMm(c.H))}</div>
+  <div style="font-size:13px;margin-top:8px;line-height:1.6">
+    <div><b>D</b> ${_crdIn(c.D)} ${lD?`· ${_crdEsc(lD.clave)}${lD.diamMedido?' (real '+_crdIn4(lD.diamMedido)+')':''}`:'<span style="color:var(--warning)">· sin lote</span>'}</div>
+    ${c.E_cal?`<div><b>E</b> ${c.E_cal} · ${_crdIn(c.E_diam)}${lE?' · '+_crdEsc(lE.clave):''}</div>`:''}
+    <div><b>F</b> ${c.F_cal||'—'} · ${_crdIn(c.F_diam)}${lF?' · '+_crdEsc(lF.clave):''}</div>
+    <div><b>OD</b> objetivo ${_crdIn(c.odObj)} · calculado ${_crdIn(c.odCalc)}</div>
+    <div style="font-size:11px;color:var(--text3)">Gaza ${CRD_GAZAS[c.gaza]||c.gaza}${c.elongacionPct?` · elongación ${c.elongacionPct}%`:''}${c.origenDatos&&c.origenDatos.LSPLM?' · LSPLM '+_crdEsc(c.origenDatos.LSPLM):''}</div>
+  </div>
+  ${cobreHtml}
+  ${pie}
+  <div id="crd-wake" style="font-size:11px;text-align:center;margin-top:10px"></div>
+  <div style="display:grid;grid-template-columns:1fr 1.4fr 1fr;gap:6px;margin-top:8px">
+    <button class="btn btn-ghost btn-sm" ${prev?`onclick="crdModalFicha('${o.id}','${prev.folio}')"`:'disabled style="opacity:.35"'}>← ${prev?prev.nota+'-'+prev.cuerda:''}</button>
+    <button class="btn btn-ghost btn-sm" onclick="crdModalOrden('${o.id}')">${o.folio}</button>
+    <button class="btn btn-ghost btn-sm" ${next?`onclick="crdModalFicha('${o.id}','${next.folio}')"`:'disabled style="opacity:.35"'}>${next?next.nota+'-'+next.cuerda:''} →</button>
+  </div>`);
+  crdMantenerPantalla();
+}
+function crdValidarOd(D){
+  const od=crdPulg(document.getElementById('crd-f-od').value),b=document.getElementById('crd-f-ok'),e=document.getElementById('crd-f-err');
+  const ok=od>D&&od<.6;
+  b.disabled=!ok;b.style.opacity=ok?1:.45;
+  e.textContent=document.getElementById('crd-f-od').value&&!ok?'Escribe el OD en pulgadas (.061) o milésimas (61).':'';
+}
+function crdAccionHecha(oid,folio){
+  const g=id=>{const el=document.getElementById(id);return el?el.value:undefined;};
+  const r=crdMarcarHecha(oid,folio,{odReal:g('crd-f-od'),odInteriorReal:g('crd-f-odi')||null,
+    D_loteId:g('crd-f-lD')??undefined,E_loteId:g('crd-f-lE')??undefined,F_loteId:g('crd-f-lF')??undefined});
+  if(r.error){document.getElementById('crd-f-err').textContent=r.error;return;}
+  showToast(`${folio.slice(-2)} hecha · ${r.difMils>0?'+':''}${r.difMils} milésimas`);
+  _crdRefrescar();
+  const o=crdGetOrden(oid),sig=o.cuerdas.find(x=>x.estado!=='hecha'&&!x.faltaA&&o.cuerdas.indexOf(x)>o.cuerdas.findIndex(y=>y.folio===folio))||o.cuerdas.find(x=>x.estado!=='hecha'&&!x.faltaA);
+  if(o.estado==='terminada'){showToast(`🎉 Orden ${o.folio} terminada`,3500);crdModalOrden(oid);}
+  else crdModalFicha(oid,sig?sig.folio:folio);
+}
+function crdAccionCorregir(oid,folio){
+  const r=crdCorregirOdReal(oid,folio,{odReal:document.getElementById('crd-f-corr').value});
+  if(r.error){showToast(r.error);return;}showToast('OD real corregido ✓');_crdRefrescar();crdModalFicha(oid,folio);
+}
+function crdAccionRehacer(oid,folio){
+  if(!confirm('¿Rehacer esta cuerda? Vuelve a pendiente; el intento queda en el registro como descartado.'))return;
+  crdRehacer(oid,folio);showToast('Cuerda de vuelta a pendiente');_crdRefrescar();crdModalFicha(oid,folio);
+}
+function crdGuardarFaltaA(oid,folio){
+  const c=crdCompletarA(oid,folio,{bphp:document.getElementById('crd-f-bphp').value,A:document.getElementById('crd-f-A').value});
+  if(!c){showToast('Escribe BPHP o A');return;}showToast('A guardada ✓');_crdRefrescar();crdModalFicha(oid,folio);
+}
+
+// ══ PRESUPUESTO DESDE LA ORDEN (v3.6.2) ══
+let _crdPresSel=null;
+function crdModalPresupuesto(oid,tipo,catId){
+  crdLiberarPantalla();
+  const o=crdGetOrden(oid);if(!o)return;
+  const piano=getPiano(o.clienteId,o.pianoId);
+  if(tipo){_crdPresSel={oid,tipo,catId};}
+  else if(!_crdPresSel||_crdPresSel.oid!==oid){const d=crdCatCotizador(piano);_crdPresSel={oid,tipo:d.tipo,catId:d.catId};}
+  const sel=_crdPresSel,cats=CUE_CATS[sel.tipo];
+  if(!cats.some(c=>c.id===sel.catId))sel.catId=cats[0].id;
+  const con=crdConceptosOrden(o,sel.tipo,sel.catId),total=con.reduce((s,x)=>s+x.precio,0);
+  const pres=o.presupuestoId?(state.presupuestos||[]).find(p=>p.id===o.presupuestoId):null;
+  openModal(`<div class="modal-title">🧾 Presupuesto · ${o.folio}</div>
+  <div style="font-size:12px;color:var(--text2);margin-bottom:10px">${_crdPianoTxt(o)}${piano&&piano.subtipo?' · '+_crdEsc(piano.subtipo):''}</div>
+  ${pres?`<div style="background:var(--primary-light);border-radius:8px;padding:8px 10px;margin-bottom:10px;font-size:12px">Esta orden ya tiene un presupuesto del ${fmtDate(pres.fecha)} por ${fmtMoney(pres.items.reduce((s,i)=>s+Number(i.precio),0))}.
+    <button class="btn btn-ghost btn-xs" style="margin-left:6px" onclick="closeModal();verPresupuesto(${pres.id})">Ver</button></div>`:''}
+  <div style="display:grid;grid-template-columns:1fr 2fr;gap:8px">
+    <div class="input-group" style="margin-bottom:10px"><label class="input-label">Piano</label>
+      <select class="input select" onchange="crdModalPresupuesto('${o.id}',this.value,CUE_CATS[this.value][0].id)">
+        <option value="vertical" ${sel.tipo==='vertical'?'selected':''}>Vertical</option><option value="cola" ${sel.tipo==='cola'?'selected':''}>Cola</option></select></div>
+    <div class="input-group" style="margin-bottom:10px"><label class="input-label">Categoría de precio</label>
+      <select class="input select" onchange="crdModalPresupuesto('${o.id}','${sel.tipo}',this.value)">
+        ${cats.map(c=>`<option value="${c.id}" ${c.id===sel.catId?'selected':''}>${c.label} · ${fmtMoney(getCueAnchor(sel.tipo,c.id))}</option>`).join('')}</select></div>
+  </div>
+  ${con.map(x=>`<div class="budget-row" style="align-items:flex-start">
+    <div style="flex:1"><div style="font-size:14px;font-weight:600">${x.cant}× ${x.label}</div>
+    <div style="font-size:11px;color:var(--text2)">Notas ${x.notas[0]===x.notas[1]?x.notas[0]:x.notas[0]+'–'+x.notas[1]} · ${fmtMoney(x.precioUnit)} c/u</div></div>
+    <div style="font-weight:700">${fmtMoney(x.precio)}</div></div>`).join('')||'<div style="color:var(--text3);font-size:13px;padding:10px 0">La orden no tiene cuerdas.</div>'}
+  <div style="font-weight:700;font-size:18px;text-align:right;padding:10px 0;color:var(--success);border-top:2px solid var(--border);margin-top:4px">Total: ${fmtMoney(total)}</div>
+  <div style="font-size:11px;color:var(--text3);margin-bottom:10px">Precios del cotizador (Configuración → Cotizador de Cuerdas). En el presupuesto puedes ajustar precios y agregar instalación u otros servicios.</div>
+  <button class="btn btn-primary btn-full" ${con.length?'':'disabled style="opacity:.45"'} onclick="crdCrearPresupuesto('${o.id}')">${pres?'Crear otro presupuesto':'Crear presupuesto'}</button>
+  <button class="btn btn-ghost btn-full btn-sm" style="margin-top:6px" onclick="crdModalOrden('${o.id}')">← Volver a la orden</button>`);
+}
+function crdCrearPresupuesto(oid){
+  const o=crdGetOrden(oid);if(!o||!_crdPresSel)return;
+  const con=crdConceptosOrden(o,_crdPresSel.tipo,_crdPresSel.catId);
+  window._ncaSeedItems=con.map(x=>({nombre:x.nombre,precio:x.precio,tipo:'cuerda'}));
+  _pbReturnFromMini=false;
+  _openPresupuestoModal('Nuevo presupuesto','Crear presupuesto',o.clienteId,null);
+  window._crdPresOrden={ordenId:o.id,clienteId:o.clienteId,pianoId:o.pianoId};
+  const ps=document.getElementById('pb-p');if(ps)ps.value=String(o.pianoId);pbPianoId=o.pianoId;
+}
+function crdVincularPresupuesto(oid,pid){const o=crdGetOrden(oid);if(!o)return;o.presupuestoId=pid;crdGuardarOrden(o);}
+
+// ══ CONFIGURACIÓN: INVENTARIO DE ALAMBRE Y PARÁMETROS (v3.6.2) ══
+let _crdCfgAbierto=false;
+function crdConfigHTML(){
+  const cfg=crdCfg();
+  const fila=l=>{const av=crdAvisoLote(l),act=l.activo!==false;
+    return `<div class="settings-row" style="cursor:pointer;padding:10px 16px;${act?'':'opacity:.45'}" onclick="crdModalLote('${l.material}','${l.id}')">
+      <div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:600">${_crdEsc(l.clave)}${act?'':' · inactivo'}</div>
+      <div style="font-size:11px;color:var(--text2)">${_crdIn4(l.diamNominal)}${Number(l.diamMedido)?` · real <b>${_crdIn4(l.diamMedido)}</b>`:''}${l.marca?' · '+_crdEsc(l.marca):''}${l.proveedor?' · '+_crdEsc(l.proveedor):''}</div>
+      ${av?`<div style="font-size:11px;color:var(--warning);font-weight:600">⚠️ ${av}</div>`:''}</div>
+      <span style="color:var(--text3)">›</span></div>`;};
+  const acero=crdLotesTodos('acero'),cobre=crdLotesTodos('cobre');
+  const nCombos=(state.combinacionesCobre||[]).filter(r=>!r.descartada).length;
+  return `<details ${_crdCfgAbierto?'open':''} ontoggle="_crdCfgAbierto=this.open" style="margin:0 0 2px">
+  <summary style="padding:12px 16px;font-weight:700;font-size:14px;cursor:pointer;list-style:none;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;background:var(--bg)">
+    🎼 Alambre para cuerdas <span style="font-size:12px;color:var(--text3)">${acero.filter(l=>l.activo!==false).length} acero · ${cobre.filter(l=>l.activo!==false).length} cobre</span>
+  </summary>
+  <div style="padding:8px 16px;font-size:12px;color:var(--text2)">Cada lote es un carrete o rollo. La app solo sugiere calibres con al menos un lote activo. Los lotes no se borran: se desactivan.</div>
+  <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 16px"><b style="font-size:13px">Acero (núcleos)</b>
+    <button class="btn btn-ghost btn-xs" onclick="crdModalLote('acero')">+ Carrete de acero</button></div>
+  ${acero.map(fila).join('')||'<div style="padding:8px 16px;font-size:12px;color:var(--warning)">Sin acero dado de alta: las fichas dirán "sin lote".</div>'}
+  <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px 6px"><b style="font-size:13px">Cobre</b>
+    <button class="btn btn-ghost btn-xs" onclick="crdModalLote('cobre')">+ Carrete de cobre</button></div>
+  ${cobre.map(fila).join('')}
+  <div style="padding:12px 16px 6px"><b style="font-size:13px">Parámetros de fabricación</b></div>
+  <div class="settings-row"><div><div class="sr-title">Factor de aplastamiento</div><div style="font-size:11px;color:var(--text2)">OD = D + factor × cobre · Forss 1.82 · geometría pura 2.0</div></div>
+    <input type="number" class="input" style="width:90px;text-align:right" step="0.01" min="1.5" max="2.1" value="${cfg.factorForss}" onchange="crdGuardarParam('factorForss',this.value,1.5,2.1)"></div>
+  <div class="settings-row"><div class="sr-title">G por defecto (mm)</div>
+    <input type="number" class="input" style="width:90px;text-align:right" step="0.5" value="${cfg.gDefault}" onchange="crdGuardarParam('gDefault',this.value,20,60)"></div>
+  <div class="settings-row"><div class="sr-title">Gaza por defecto</div>
+    <select class="input select" style="width:auto;max-width:190px" onchange="crdGuardarParam('gaza',this.value)">${Object.keys(CRD_GAZAS).map(k=>`<option value="${k}" ${k===cfg.gaza?'selected':''}>${CRD_GAZAS[k]}</option>`).join('')}</select></div>
+  <div class="settings-row"><div><div class="sr-title">Tolerancia de H (vueltas)</div><div style="font-size:11px;color:var(--text2)">Aviso cuando H no cuadra con B − A</div></div>
+    <input type="number" class="input" style="width:90px;text-align:right" step="0.5" value="${cfg.tolVueltas}" onchange="crdGuardarParam('tolVueltas',this.value,.5,10)"></div>
+  <div style="padding:8px 16px 12px;font-size:11px;color:var(--text3)">${nCombos} combinaciones registradas con OD real. Más adelante servirán para calibrar el factor por calibre.</div>
+  </details>`;
+}
+function crdGuardarParam(k,v,min,max){
+  let val=v;
+  if(min!=null){val=Number(v);if(!isFinite(val)||val<min||val>max){showToast(`Valor fuera de rango (${min}–${max})`);renderConfig();return;}}
+  state.cuerdasConfig=Object.assign({},state.cuerdasConfig||{},{[k]:val});saveState();showToast('Guardado ✓');
+}
+function crdModalLote(material,id){
+  const l=id!=null?crdGetLote(id):null,ac=material==='acero';
+  const awgOpts=Object.keys(CRD_AWG).map(Number).sort((a,b)=>b-a).map(g=>`<option value="${g}" ${g===27?'selected':''}>AWG ${g} · ${_crdIn4(CRD_AWG[g])}</option>`).join('');
+  const marcaSel=l?l.marca:'Roslau',otra=ac&&l&&l.marca&&!CRD_MARCAS_ACERO.includes(l.marca);
+  openModal(`<div class="modal-title">${l?'Lote '+_crdEsc(l.clave):ac?'+ Carrete de acero':'+ Carrete de cobre'}</div>
+  ${ac?`<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+    <div class="input-group"><label class="input-label">Marca</label><select class="input select" id="crd-l-marca" onchange="document.getElementById('crd-l-otra').style.display=this.value==='Otra'?'':'none';crdLoteAvisoUI()">
+      ${CRD_MARCAS_ACERO.map(m=>`<option ${(otra?'Otra':marcaSel)===m?'selected':''}>${m}</option>`).join('')}</select>
+      <input class="input" id="crd-l-otra" placeholder="¿Cuál?" value="${otra?_crdEsc(l.marca):''}" style="margin-top:6px;${otra?'':'display:none'}"></div>
+    <div class="input-group"><label class="input-label">Diámetro nominal *</label><input class="input" id="crd-l-nom" inputmode="decimal" placeholder=".041 o 41" value="${l&&l.diamNominal?_crdIn4(l.diamNominal):''}"></div>
+  </div>`:(l?`<div style="font-size:13px;color:var(--text2);margin-bottom:10px">${crdCalLabel(l)} · nominal ${_crdIn4(l.diamNominal)}</div>`:`
+  <div style="display:grid;grid-template-columns:1fr 2fr;gap:8px">
+    <div class="input-group"><label class="input-label">Sistema</label><select class="input select" id="crd-l-sis" onchange="document.getElementById('crd-l-awg').style.display=this.value==='AWG'?'':'none';document.getElementById('crd-l-mm').style.display=this.value==='mm'?'':'none'"><option>AWG</option><option value="mm">mm (métrico)</option></select></div>
+    <div class="input-group"><label class="input-label">Calibre</label><select class="input select" id="crd-l-awg">${awgOpts}</select>
+      <input class="input" id="crd-l-mm" inputmode="decimal" placeholder="mm, ej. 0.36" style="display:none"></div>
+  </div>
+  <div class="input-group"><label class="input-label">Marca</label><input class="input" id="crd-l-marcaCu" placeholder="Opcional"></div>`)}
+  ${l&&!ac?`<div class="input-group"><label class="input-label">Marca</label><input class="input" id="crd-l-marcaCu" value="${_crdEsc(l.marca||'')}" placeholder="Opcional"></div>`:''}
+  <div class="input-group"><label class="input-label">Diámetro medido (micrómetro)${ac?'':' · opcional'}</label>
+    <input class="input" id="crd-l-med" inputmode="decimal" placeholder="Si lo mides, el cálculo usa este valor" value="${l&&Number(l.diamMedido)?_crdIn4(l.diamMedido):''}" oninput="crdLoteAvisoUI()"></div>
+  <div id="crd-l-aviso" style="font-size:12px;color:var(--warning);font-weight:600;min-height:4px;margin:-6px 0 8px"></div>
+  <div class="input-group"><label class="input-label">Proveedor</label><input class="input" id="crd-l-prov" value="${_crdEsc(l&&l.proveedor||'')}" placeholder="Opcional"></div>
+  <div class="input-group"><label class="input-label">Notas</label><input class="input" id="crd-l-notas" value="${_crdEsc(l&&l.notas||'')}" placeholder="Opcional"></div>
+  <button class="btn btn-primary btn-full" onclick="crdGuardarLoteUI('${material}',${l?`'${l.id}'`:'null'})">${l?'Guardar cambios':'Dar de alta'}</button>
+  ${l?`<button class="btn btn-ghost btn-full btn-sm" style="margin-top:6px;${l.activo!==false?'color:var(--danger)':''}" onclick="crdDesactivarLote('${l.id}',${l.activo===false});closeModal();renderConfig();showToast('${l.activo===false?'Lote activado':'Lote desactivado'}')">${l.activo===false?'Activar lote':'Desactivar lote (carrete terminado)'}</button>`:''}
+  <button class="btn btn-ghost btn-full btn-sm" style="margin-top:6px" onclick="closeModal()">Cancelar</button>`);
+  crdLoteAvisoUI();
+}
+function crdLoteAvisoUI(){
+  const el=document.getElementById('crd-l-aviso'),m=document.getElementById('crd-l-marca');if(!el)return;
+  el.textContent=m&&m.value==='Mapes'&&!crdPulg(document.getElementById('crd-l-med').value)?'⚠️ Mide el diámetro real: el acero Mapes suele venir corto.':'';
+}
+function crdGuardarLoteUI(material,id){
+  const v=k=>{const e=document.getElementById(k);return e?e.value.trim():'';};
+  const med=crdPulg(v('crd-l-med'));
+  if(v('crd-l-med')&&!(med>0&&med<.2)){showToast('Diámetro medido inválido');return;}
+  const datos={diamMedido:med||null,proveedor:v('crd-l-prov'),notas:v('crd-l-notas')};
+  if(material==='acero'){
+    const nom=crdPulg(v('crd-l-nom'));if(!(nom>.02&&nom<.15)){showToast('Escribe el diámetro nominal (.041 o 41)');return;}
+    datos.diamNominal=nom;datos.marca=v('crd-l-marca')==='Otra'?(v('crd-l-otra')||'Otra'):v('crd-l-marca');
+    if(id==null)Object.assign(datos,{material:'acero',sistema:'decimal',calibre:+(nom*1000).toFixed(1)});
+  }else{
+    datos.marca=v('crd-l-marcaCu');
+    if(id==null){
+      const sis=v('crd-l-sis');
+      if(sis==='mm'){const mm=_crdNum(v('crd-l-mm'));if(!(mm>0.05&&mm<3)){showToast('Escribe el calibre en mm (ej. 0.36)');return;}Object.assign(datos,{material:'cobre',sistema:'mm',calibre:mm});}
+      else Object.assign(datos,{material:'cobre',sistema:'AWG',calibre:Number(v('crd-l-awg'))});
+    }
+  }
+  if(id!=null)datos.id=crdGetLote(id).id;
+  const l=crdGuardarLote(datos);
+  closeModal();_crdCfgAbierto=true;renderConfig();showToast(`${l.clave} ${id!=null?'actualizado':'dado de alta'} ✓`);
+}
+crdInit();
+
+
 // ══ HELPERS ══
 const initials=n=>n.split(' ').slice(0,2).map(w=>w[0]).join('').toUpperCase();
 const fmtDate=iso=>{const[y,m,d]=iso.split('-');return`${d}/${m}/${y}`;};
@@ -1212,7 +2221,7 @@ function navigate(name){
     b.classList.toggle('active',['inicio','clientes','calendario','servicios','productos','presupuesto','config'][i]===name);
   });
   currentScreen=name;
-  const fabOn=['clientes','servicios','productos','presupuesto','calendario','contactar'];
+  const fabOn=['clientes','servicios','productos','presupuesto','calendario','contactar','cuerdas'];
   document.getElementById('fab').classList.toggle('hidden',!fabOn.includes(name));
   renderScreen(name);
   // v2.9.0 — desktop sidebar sync
@@ -1221,17 +2230,18 @@ function navigate(name){
 function onFabClick(){
   ({clientes:showModalNuevoCliente,servicios:showModalNuevoServicio,
     productos:showModalNuevoProducto,presupuesto:()=>showModalNuevoPresupuesto(),
-    calendario:()=>showModalNuevaCita(),contactar:showModalNuevoProspecto})[currentScreen]?.();
+    calendario:()=>showModalNuevaCita(),contactar:showModalNuevoProspecto,cuerdas:()=>crdModalNuevaOrden()})[currentScreen]?.();
 }
 function renderScreen(n){
   ({inicio:renderInicio,clientes:renderClientes,calendario:renderCalendario,
     servicios:renderServicios,productos:renderProductos,presupuesto:renderPresupuesto,
-    config:renderConfig,historial:renderHistorial,cotizador:renderCotizadorCuerdas,contactar:renderContactar})[n]?.();
+    config:renderConfig,historial:renderHistorial,cotizador:renderCotizadorCuerdas,contactar:renderContactar,cuerdas:renderCuerdas})[n]?.();
 }
 
 // ══ MODAL ══
 function openModal(html){document.getElementById('modal-body').innerHTML=html;document.getElementById('modal-overlay').classList.remove('hidden');}
 function closeModal(){
+  if(typeof crdLiberarPantalla==='function')crdLiberarPantalla();
   document.getElementById('modal-overlay').classList.add('hidden');
   document.getElementById('modal-body').innerHTML='';
   // Actualizar contador de notas en dashboard
@@ -1474,7 +2484,7 @@ async function renderInicio(){
         ${perfAvatar}
         <div><div class="page-title">Hola, ${tec.nombre||'Técnico'}</div>
         <div class="page-sub">${new Date().toLocaleDateString('es-MX',{weekday:'long',day:'numeric',month:'long'})}</div>
-        <div style="font-size:10px;color:var(--text3);margin-top:1px;letter-spacing:.3px">PianoTune Pro v3.4.1</div></div>
+        <div style="font-size:10px;color:var(--text3);margin-top:1px;letter-spacing:.3px">PianoTune Pro v3.6.2</div></div>
       </div>
       <button class="btn btn-ghost btn-xs" onclick="navigate('config')">⚙ Config</button>
     </div>
@@ -1908,6 +2918,8 @@ function eliminarCliente(id){
   tombstone('clientes',id);
   state.citas.filter(x=>x.clienteId===id).forEach(x=>tombstone('citas',x.id));
   state.presupuestos.filter(x=>x.clienteId===id).forEach(x=>tombstone('presupuestos',x.id));
+  (state.ordenesCuerdas||[]).filter(x=>x.clienteId===id).forEach(x=>tombstone('ordenesCuerdas',x.id)); // v3.6.0
+  state.ordenesCuerdas=(state.ordenesCuerdas||[]).filter(x=>x.clienteId!==id);
   state.clientes=state.clientes.filter(x=>x.id!==id);
   state.citas=state.citas.filter(x=>x.clienteId!==id);
   state.presupuestos=state.presupuestos.filter(x=>x.clienteId!==id);
@@ -1939,6 +2951,7 @@ function showModalPiano(clienteId,pianoId){
     ${(p.fotos||[]).map((f,i)=>`<div class="photo-wrap"><img src="${f}" class="photo-thumb" onclick="verFoto('${f}')"><button class="photo-del" onclick="eliminarFoto(${clienteId},${pianoId},${i})">✕</button></div>`).join('')}
     <label class="photo-add" title="Agregar foto">+<input type="file" accept="image/*" style="display:none" onchange="agregarFoto(${clienteId},${pianoId},this)"></label>
   </div>
+  ${crdSeccionPiano(clienteId,pianoId)}
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px">
     <button class="btn btn-ghost btn-sm" onclick="closeModal();showModalEditarPiano(${clienteId},${pianoId})">✏️ Editar</button>
     <button class="btn btn-primary btn-sm" onclick="closeModal();showModalNuevaCita(null,${clienteId},${pianoId})">+ Nueva cita</button>
@@ -2159,8 +3172,10 @@ function guardarPiano(cId,pId){
 }
 function eliminarPiano(cId,pId){
   const c=getCliente(cId);const p=getPiano(cId,pId);if(!c||!p)return;
-  if(!confirm(`¿Eliminar "${p.marca} ${p.modelo}" de ${c.nombre}? Se borrarán también sus citas y fotos.`))return;
+  if(!confirm(`¿Eliminar "${p.marca} ${p.modelo}" de ${c.nombre}? Se borrarán también sus citas, fotos y órdenes de cuerdas.`))return;
   state.citas.filter(x=>x.clienteId===cId&&x.pianoId===pId).forEach(x=>tombstone('citas',x.id));
+  (state.ordenesCuerdas||[]).filter(x=>x.clienteId===cId&&x.pianoId===pId).forEach(x=>tombstone('ordenesCuerdas',x.id)); // v3.6.0
+  state.ordenesCuerdas=(state.ordenesCuerdas||[]).filter(x=>!(x.clienteId===cId&&x.pianoId===pId));
   c.pianos=c.pianos.filter(x=>x.id!==pId);
   state.citas=state.citas.filter(x=>!(x.clienteId===cId&&x.pianoId===pId));
   saveState();closeModal();showToast('Instrumento eliminado');showModalCliente(cId);
@@ -2370,8 +3385,9 @@ function _renderModalEditSvc(){
   <div style="display:flex;gap:6px;margin-top:6px">
     <input type="number" class="input" id="esvc-pr" placeholder="Precio c/IVA" style="flex:1">
     <button class="btn btn-success btn-sm" onclick="_editSvcAgregar()" style="white-space:nowrap">+ Agregar</button>
-    <button class="btn btn-ghost btn-sm" onclick="esvcNuevoServicioRapido()" style="white-space:nowrap">+ Nuevo</button>
+    <button class="btn btn-ghost btn-sm" onclick="_toggleRapido('esvc')" style="white-space:nowrap">+ Nuevo</button>
   </div>
+  ${_quickAddPanelHTML('esvc','servicio',_catOptionsServicio())}
   <button class="btn btn-primary btn-full" style="margin-top:14px" onclick="_editSvcGuardar(${id})">Guardar cambios</button>
   <button class="btn btn-ghost btn-full" style="margin-top:6px" onclick="closeModal();showModalDetalleCita(${id})">Cancelar</button>`);
   setTimeout(()=>buildSvcSelector('esvc-wrap','esvc-s','esvc-pr'),50);
@@ -2534,8 +3550,9 @@ function showModalNuevaCita(fechaPre,preCliId,prePianoId,prePresupId){
     <div style="display:flex;gap:6px;align-items:center;margin-top:6px">
       <input type="number" class="input" id="nca-pr" placeholder="Precio c/IVA" style="flex:1">
       <button type="button" class="btn btn-success btn-sm" onclick="ncaAddServicio()" style="white-space:nowrap;flex-shrink:0">+ Agregar</button>
-      <button type="button" class="btn btn-ghost btn-sm" onclick="ncaNuevoServicioRapido()" style="white-space:nowrap;flex-shrink:0">+ Nuevo</button>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="_toggleRapido('nca')" style="white-space:nowrap;flex-shrink:0">+ Nuevo</button>
     </div>
+    ${_quickAddPanelHTML('nca','servicio',_catOptionsServicio())}
   </div>
   <div class="input-group">
     <label class="input-label">Servicios de la cita</label>
@@ -2699,6 +3716,7 @@ function renderServicios(){
     <div style="display:flex;justify-content:space-between;align-items:flex-start">
       <div><div class="page-title">Catálogo de servicios</div><div class="page-sub">${shown.length} servicios</div></div>
       <button onclick="navigate('cotizador')" style="display:flex;align-items:center;gap:5px;padding:7px 13px;border-radius:20px;background:var(--primary);border:none;color:#fff;font-weight:700;font-size:12px;cursor:pointer;flex-shrink:0">🎵 Cotizar</button>
+      <button onclick="navigate('cuerdas')" style="display:flex;align-items:center;gap:5px;padding:7px 13px;border-radius:20px;background:var(--surface);border:1.5px solid var(--primary);color:var(--primary);font-weight:700;font-size:12px;cursor:pointer;flex-shrink:0;margin-left:6px">🎼 Cuerdas</button>
     </div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;padding:8px 0 2px">
       ${['todos',...cats].map(c=>`<button onclick="_svcFiltro='${c}';renderServicios()" style="flex-shrink:0;padding:5px 11px;border-radius:20px;border:1.5px solid ${_svcFiltro===c?'var(--primary)':'var(--border)'};background:${_svcFiltro===c?'var(--primary)':'var(--surface)'};color:${_svcFiltro===c?'#fff':'var(--text2)'};font-size:12px;font-weight:600;cursor:pointer">${c==='todos'?'Todos':CAT_LABELS[c]||c}</button>`).join('')}
@@ -2873,50 +3891,77 @@ function crearServicioRapido(nombre,precio,categoria){
   state.servicios.push(s);saveState();
   return s;
 }
-function crearProductoRapido(nombre,precio){
-  const p={id:nextId(),clave:'',nombre,categoria:'Otros',marca:'',modelo:'',precioCompra:0,precio:Number(precio)||0,stock:0,stockMinimo:0,proveedor:'',notas:''};
+function crearProductoRapido(nombre,precio,categoria){
+  const p={id:nextId(),clave:'',nombre,categoria:categoria||'Otros',marca:'',modelo:'',precioCompra:0,precio:Number(precio)||0,stock:0,stockMinimo:0,proveedor:'',notas:''};
   state.productos=state.productos||[];
   state.productos.push(p);saveState();
   return p;
 }
-function _pedirNombrePrecio(tipoLabel){
-  const nombre=(prompt(`Nombre del nuevo ${tipoLabel}:`)||'').trim();
-  if(!nombre)return null;
-  const precio=Number(prompt('Precio (con IVA incluido):','0'))||0;
-  return{nombre,precio};
+// Categorías existentes para el <select> del alta rápida
+function _catOptionsServicio(){return CAT_ORDER.map(c=>`<option value="${c}">${CAT_LABELS[c]||c}</option>`).join('');}
+function _catOptionsProducto(){
+  const cats=[...new Set((state.productos||[]).map(p=>p.categoria||'Otros'))].filter(Boolean).sort();
+  if(!cats.includes('Otros'))cats.push('Otros');
+  return cats.map(c=>`<option value="${c}">${c}</option>`).join('');
 }
-function ncaNuevoServicioRapido(){
-  const d=_pedirNombrePrecio('servicio');if(!d)return;
-  crearServicioRapido(d.nombre,d.precio);
-  if(!window._ncaItems)window._ncaItems=[];
-  window._ncaItems.push({nombre:d.nombre,precio:d.precio});
-  ncaRenderLista();
-  buildSvcSelector('nca-svc-wrap','nca-s','nca-pr');
-  showToast('Servicio creado y agregado a la cita ✓');
+// Panel inline de alta rápida (no abre un modal nuevo — así no rompe el
+// flujo de "regresar" a la ventana donde se está capturando la cita/presupuesto).
+function _quickAddPanelHTML(ctx,tipoLabel,catsOptions){
+  return `<div id="${ctx}-rapido" style="display:none;margin-top:8px;padding:10px;border:1.5px dashed var(--border);border-radius:10px;background:var(--bg)">
+    <div class="input-group" style="margin-bottom:8px"><label class="input-label">Nombre del nuevo ${tipoLabel}</label><input class="input" id="${ctx}-rapido-n" placeholder="Nombre"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+      <div class="input-group" style="margin:0"><label class="input-label">Precio</label><input type="number" class="input" id="${ctx}-rapido-p" placeholder="0"></div>
+      <div class="input-group" style="margin:0"><label class="input-label">Categoría</label><select class="input select" id="${ctx}-rapido-cat">${catsOptions}</select></div>
+    </div>
+    <div style="display:flex;gap:6px">
+      <button type="button" class="btn btn-primary btn-sm" style="flex:1" onclick="_confirmarRapido('${ctx}')">Guardar y agregar</button>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="_cancelarRapido('${ctx}')">Cancelar</button>
+    </div>
+  </div>`;
 }
-function esvcNuevoServicioRapido(){
-  const d=_pedirNombrePrecio('servicio');if(!d)return;
-  crearServicioRapido(d.nombre,d.precio);
-  if(!window._editSvcItems)window._editSvcItems=[];
-  window._editSvcItems.push({nombre:d.nombre,precio:d.precio});
-  _renderModalEditSvc();
-  showToast('Servicio creado y agregado ✓');
+function _toggleRapido(ctx){
+  const el=document.getElementById(ctx+'-rapido');if(!el)return;
+  const abrir=el.style.display==='none'||!el.style.display;
+  el.style.display=abrir?'block':'none';
+  if(abrir){const n=document.getElementById(ctx+'-rapido-n');if(n)n.focus();}
 }
-function pbNuevoServicioRapido(){
-  const d=_pedirNombrePrecio('servicio');if(!d)return;
-  const svc=crearServicioRapido(d.nombre,d.precio);
-  pbItems.push({svcId:svc.id,nombre:svc.nombre,precio:d.precio});
-  renderPbItems();
-  buildSvcSelector('pb-svc-wrap','pb-s','pb-pr');
-  showToast('Servicio creado y agregado al presupuesto ✓');
+function _cancelarRapido(ctx){
+  const el=document.getElementById(ctx+'-rapido');if(!el)return;
+  el.style.display='none';
+  const n=document.getElementById(ctx+'-rapido-n');if(n)n.value='';
+  const p=document.getElementById(ctx+'-rapido-p');if(p)p.value='';
 }
-function pbNuevoProductoRapido(){
-  const d=_pedirNombrePrecio('producto');if(!d)return;
-  const prod=crearProductoRapido(d.nombre,d.precio);
-  pbItems.push({prodId:prod.id,nombre:prod.nombre,precio:d.precio,tipo:'producto'});
-  renderPbItems();
-  buildProdSelector('pb-prod-wrap','pb-prod-s','pb-prod-pr');
-  showToast('Producto creado y agregado al presupuesto ✓');
+function _confirmarRapido(ctx){
+  const nombre=(document.getElementById(ctx+'-rapido-n')?.value||'').trim();
+  if(!nombre){showToast('Escribe un nombre');return;}
+  const precio=Number(document.getElementById(ctx+'-rapido-p')?.value)||0;
+  const categoria=document.getElementById(ctx+'-rapido-cat')?.value||'';
+  if(ctx==='nca'){
+    const svc=crearServicioRapido(nombre,precio,categoria);
+    if(!window._ncaItems)window._ncaItems=[];
+    window._ncaItems.push({nombre:svc.nombre,precio});
+    ncaRenderLista();
+    buildSvcSelector('nca-svc-wrap','nca-s','nca-pr');
+  }else if(ctx==='esvc'){
+    const svc=crearServicioRapido(nombre,precio,categoria);
+    if(!window._editSvcItems)window._editSvcItems=[];
+    window._editSvcItems.push({nombre:svc.nombre,precio});
+    _renderModalEditSvc(); // reconstruye todo el modal; no hace falta _cancelarRapido
+    showToast('Servicio creado y agregado ✓');
+    return;
+  }else if(ctx==='pb-svc'){
+    const svc=crearServicioRapido(nombre,precio,categoria);
+    pbItems.push({svcId:svc.id,nombre:svc.nombre,precio});
+    renderPbItems();
+    buildSvcSelector('pb-svc-wrap','pb-s','pb-pr');
+  }else if(ctx==='pb-prod'){
+    const prod=crearProductoRapido(nombre,precio,categoria);
+    pbItems.push({prodId:prod.id,nombre:prod.nombre,precio,tipo:'producto'});
+    renderPbItems();
+    buildProdSelector('pb-prod-wrap','pb-prod-s','pb-prod-pr');
+  }
+  _cancelarRapido(ctx);
+  showToast('Agregado ✓');
 }
 
 const CATALOGO_INICIAL_PRODUCTOS = [{"clave": "PIA-001", "nombre": "Piano Lifter Escorpion", "categoria": "Accesorios", "marca": "Pianos & Pianos", "modelo": "", "precioCompra": 0, "precio": 30000, "stock": 0, "stockMinimo": 0, "proveedor": "Pianos & Pianos", "notas": ""}, {"clave": "COR-002", "nombre": "Correas para transporte", "categoria": "Accesorios", "marca": "Pianos & Pianos", "modelo": "", "precioCompra": 0, "precio": 1500, "stock": 0, "stockMinimo": 0, "proveedor": "Pianos & Pianos", "notas": ""}, {"clave": "PIA-003", "nombre": "Piano tilter", "categoria": "Accesorios", "marca": "Pianos & Pianos", "modelo": "", "precioCompra": 0, "precio": 15000, "stock": 0, "stockMinimo": 0, "proveedor": "Pianos & Pianos", "notas": ""}, {"clave": "CUE-004", "nombre": "Cuerda de acero Vertical C3 a C4", "categoria": "Cuerdas", "marca": "Roslau", "modelo": "", "precioCompra": 0, "precio": 150, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": "Para vertical"}, {"clave": "CUE-005", "nombre": "Cuerda de acero Vertical C4 a C5", "categoria": "Cuerdas", "marca": "Roslau", "modelo": "", "precioCompra": 0, "precio": 120, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": "Para vertical"}, {"clave": "CUE-006", "nombre": "Cuerda de acero Vertical C5 a C6", "categoria": "Cuerdas", "marca": "Roslau", "modelo": "", "precioCompra": 0, "precio": 100, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": "Para vertical"}, {"clave": "CUE-007", "nombre": "Cuerda de acero Vertical C6 a C7", "categoria": "Cuerdas", "marca": "Roslau", "modelo": "", "precioCompra": 0, "precio": 80, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": "Para vertical"}, {"clave": "CUE-008", "nombre": "Cuerda de acero Vertical C7 a C8", "categoria": "Cuerdas", "marca": "Roslau", "modelo": "", "precioCompra": 0, "precio": 50, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": "Para vertical"}, {"clave": "CUE-009", "nombre": "Cuerda de acero Cola C3 a C4", "categoria": "Cuerdas", "marca": "Roslau", "modelo": "", "precioCompra": 0, "precio": 200, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": "Para Cola"}, {"clave": "CUE-010", "nombre": "Cuerda de acero Cola C4 a C5", "categoria": "Cuerdas", "marca": "Roslau", "modelo": "", "precioCompra": 0, "precio": 180, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": "Para Cola"}, {"clave": "CUE-011", "nombre": "Cuerda de acero Cola C5 a C6", "categoria": "Cuerdas", "marca": "Roslau", "modelo": "", "precioCompra": 0, "precio": 150, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": "Para Cola"}, {"clave": "CUE-012", "nombre": "Cuerda de acero Cola C6 a C7", "categoria": "Cuerdas", "marca": "Roslau", "modelo": "", "precioCompra": 0, "precio": 120, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": "Para Cola"}, {"clave": "CUE-013", "nombre": "Cuerda de acero Cola C7 a C8", "categoria": "Cuerdas", "marca": "Roslau", "modelo": "", "precioCompra": 0, "precio": 80, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": "Para Cola"}, {"clave": "ALM-014", "nombre": "Almohadillas para damp chaser pad", "categoria": "Damp Chaser", "marca": "Damp Chaser", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "BAR-015", "nombre": "Barra deshumidificadora de 15w 18\"", "categoria": "Damp Chaser", "marca": "Damp Chaser", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "BAR-016", "nombre": "Barra deshumidificadora de 25w 24\"", "categoria": "Damp Chaser", "marca": "Damp Chaser", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "BAR-017", "nombre": "Barra deshumidificadora de 50w 48\"", "categoria": "Damp Chaser", "marca": "Damp Chaser", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "HUM-018", "nombre": "Humidificador Pianos Life Saver", "categoria": "Damp Chaser", "marca": "Damp Chaser", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "HUM-019", "nombre": "Humidistat", "categoria": "Damp Chaser", "marca": "Damp Chaser", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": ""}, {"clave": "LIQ-020", "nombre": "Liquido de tratamiento para el agua de damp chaser", "categoria": "Damp Chaser", "marca": "Damp Chaser", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "PIA-021", "nombre": "Piano Life Saver System 4 Partes", "categoria": "Damp Chaser", "marca": "Damp Chaser", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "SIS-022", "nombre": "Sistema de deshumidificacion Damp Chaser 3 partes", "categoria": "Damp Chaser", "marca": "Damp Chaser", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "SIS-023", "nombre": "Sistema de deshumidificacion Damp Chaser 4 partes", "categoria": "Damp Chaser", "marca": "Damp Chaser", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "TRA-024", "nombre": "Tratamiento de agua para sistema dampp chaser", "categoria": "Damp Chaser", "marca": "Damp Chaser", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "TUB-025", "nombre": "Tubo irrigador para Damp chaser", "categoria": "Damp Chaser", "marca": "Damp Chaser", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "ACT-026", "nombre": "Action cloth grosor 1", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "ACT-027", "nombre": "Action cloth grosor 2", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "ACT-028", "nombre": "Action cloth grosor 3", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "ACT-029", "nombre": "Action cloth grosor 4", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "ACT-030", "nombre": "Action cloth grosor 5", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "ACT-031", "nombre": "Action cloth grosor 6", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "FIE-032", "nombre": "Fieltro de descanso de martinetes", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "FIE-033", "nombre": "Fieltro de sordina", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "FIE-034", "nombre": "Fieltro de teclado Tamaño 1", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "FIE-035", "nombre": "Fieltro de teclado Tamaño 2", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "FIE-036", "nombre": "Fieltro de teclado Tamaño 3", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "FIE-037", "nombre": "Fieltro de teclado Tamaño 4", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "FIE-038", "nombre": "Fieltro de teclado Tamaño 5", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "FIE-039", "nombre": "Fieltro para apagadores", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "FIE-040", "nombre": "Fieltros para teclado", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "GAM-041", "nombre": "Gamusa para backcheck", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "GAM-042", "nombre": "Gamuza de atrape", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "GAM-043", "nombre": "Gamuza para atril", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "GAM-044", "nombre": "Gamuza para nuez", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "PAÑ-045", "nombre": "Paño de lana protector de cuerdas", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "SOR-046", "nombre": "Sordina", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "TIR-047", "nombre": "Tira de fieltro", "categoria": "Fieltros y Gamuzas", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "PAÑ-048", "nombre": "Paño de microfibra para limpieza", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 100, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "ACE-049", "nombre": "Acetona", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 120, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "EST-050", "nombre": "Estopa", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 100, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "TRA-051", "nombre": "Trapo Sontara azul", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 20, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "POL-052", "nombre": "Poliuretano negro", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 800, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "POL-053", "nombre": "Poliuretano transparente", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 800, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "PIR-054", "nombre": "Pirmer 1k", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 400, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "RED-055", "nombre": "Reductor Primer 1k", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 300, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "PRI-056", "nombre": "Primer 2K", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 800, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "RED-057", "nombre": "Reductor Primer 2k", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 300, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "CAT-058", "nombre": "Catalizador iniversal", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 300, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "RED-059", "nombre": "Reductor poliuretano", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "BAS-060", "nombre": "Base color", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "RED-061", "nombre": "Reductor base color", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "RES-062", "nombre": "Resanador poliester", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "RES-063", "nombre": "Resanador spot putty", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "FON-064", "nombre": "Fondo poliuretano", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "RED-065", "nombre": "Reductor fondo poliuretano", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "POL-066", "nombre": "Poliuretano base agua", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "FON-067", "nombre": "Fondo poliester", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "BAR-068", "nombre": "Barniz poliester negro", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "BAR-069", "nombre": "Barniz poliester transparente", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "ACE-070", "nombre": "Acelerador poliester", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "CAT-071", "nombre": "Catalizador poliester", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "LIJ-072", "nombre": "Lija garlopa 16\" all grit", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "LIJ-073", "nombre": "Lija cubitron 5\"", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "LIJ-074", "nombre": "Lija cubitron 6\"", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "LIJ-075", "nombre": "Lija fandelli 5\"", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "LIJ-076", "nombre": "Lija fandelli 6\"", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "LIJ-077", "nombre": "Lija hoja 80 - 380", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "LIJ-078", "nombre": "Lija hoja 400-800", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "LIJ-079", "nombre": "Lija hoja 1000-3000", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "LIJ-080", "nombre": "Lija media hoja 3500", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "PUL-081", "nombre": "Pulimeto Norton", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "PUL-082", "nombre": "Pulimento 3m 1", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "PUL-083", "nombre": "Pulimento 3m 2", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "PUL-084", "nombre": "Pulimento 3m 3", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "PUL-085", "nombre": "Pulimento menzerna 3in1", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "BOR-086", "nombre": "Borla hule espuma 6\"", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "BOR-087", "nombre": "Borla Huro 6\"", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "BOR-088", "nombre": "Borla lana 7\"", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "BOR-089", "nombre": "Borla espuma 7\"", "categoria": "Materiales de pintura", "marca": "", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "BIS-090", "nombre": "Bisagra para caida lenta de piano de cola yamaha", "categoria": "Partes Yamaha", "marca": "Yamaha", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "Yamaha Mexico", "notas": ""}, {"clave": "CAS-091", "nombre": "CASTER(S) GB1, GC1, GC2 PF", "categoria": "Partes Yamaha", "marca": "Yamaha", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "Yamaha Mexico", "notas": ""}, {"clave": "CAS-092", "nombre": "Casters Yamaha GB1", "categoria": "Partes Yamaha", "marca": "Yamaha", "modelo": "GB1", "precioCompra": 0, "precio": 7128, "stock": 0, "stockMinimo": 0, "proveedor": "Yamaha Mexico", "notas": ""}, {"clave": "CEN-093", "nombre": "CENTER PIN ASSY., 0.25 (GH1B, GH2)", "categoria": "Partes Yamaha", "marca": "Yamaha", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "Yamaha Mexico", "notas": ""}, {"clave": "CLA-094", "nombre": "Clavijas Yamaha de 60mm", "categoria": "Partes Yamaha", "marca": "Yamaha", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "Yamaha Mexico", "notas": ""}, {"clave": "CLO-095", "nombre": "CLOTH, BUSHING 1.0 T", "categoria": "Partes Yamaha", "marca": "Yamaha", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "Yamaha Mexico", "notas": ""}, {"clave": "CUB-096", "nombre": "Cubre teclado yamaha", "categoria": "Partes Yamaha", "marca": "Yamaha", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "Yamaha Mexico", "notas": ""}, {"clave": "FIE-097", "nombre": "Fieltro apagador yamaha U1/U3", "categoria": "Partes Yamaha", "marca": "Yamaha", "modelo": "U1/U3", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "Yamaha Mexico", "notas": ""}, {"clave": "LEG-098", "nombre": "LEG SOCKET GH1B GH2", "categoria": "Partes Yamaha", "marca": "Yamaha", "modelo": "GH1B GH2", "precioCompra": 0, "precio": 2075, "stock": 0, "stockMinimo": 0, "proveedor": "Yamaha Mexico", "notas": ""}, {"clave": "MAR-099", "nombre": "Martinetes para yamaha", "categoria": "Partes Yamaha", "marca": "Yamaha", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "Yamaha Mexico", "notas": ""}, {"clave": "PLA-100", "nombre": "Placa con logo yamaha", "categoria": "Partes Yamaha", "marca": "Yamaha", "modelo": "", "precioCompra": 0, "precio": 500, "stock": 0, "stockMinimo": 0, "proveedor": "Yamaha Mexico", "notas": ""}, {"clave": "TOP-101", "nombre": "TOP BOARD SECTIONAL HINGE L=1418", "categoria": "Partes Yamaha", "marca": "Yamaha", "modelo": "", "precioCompra": 0, "precio": 2028, "stock": 0, "stockMinimo": 0, "proveedor": "Yamaha Mexico", "notas": ""}, {"clave": "TRU-102", "nombre": "TRUSS HEAD WOOD SCREW 3.0X12 6PCS. BRASS", "categoria": "Partes Yamaha", "marca": "Yamaha", "modelo": "", "precioCompra": 624.66, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "Yamaha Mexico", "notas": ""}, {"clave": "BIS-103", "nombre": "Bisagra superior de tapa de piano de cola de 1.50 mts", "categoria": "Refacciones", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "CER-104", "nombre": "Cerradura para piano de bronce con llave", "categoria": "Refacciones", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "CLA-105", "nombre": "Clavijas de afinacion alemanas diamantadas", "categoria": "Refacciones", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "CLA-106", "nombre": "Clavijas Diamond", "categoria": "Refacciones", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "EJE-107", "nombre": "Ejes de bronce", "categoria": "Refacciones", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "HIL-108", "nombre": "Hilo de seda para martinetes", "categoria": "Refacciones", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "JUE-109", "nombre": "Juego de martinetes Abel", "categoria": "Refacciones", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "JUE-110", "nombre": "Juego de martinetes Genericos", "categoria": "Refacciones", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "JUE-111", "nombre": "Juego de martinetes Imadawa", "categoria": "Refacciones", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "JUE-112", "nombre": "Juego de martinetes Renner", "categoria": "Refacciones", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "LLA-113", "nombre": "Llave para chapa de piano", "categoria": "Refacciones", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "PEG-114", "nombre": "Pegamento", "categoria": "Refacciones", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "PER-115", "nombre": "Perno de bronce bisagra de tapa de piano", "categoria": "Refacciones", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 50, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "RES-116", "nombre": "Resortes de apagador inferior", "categoria": "Refacciones", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "RES-117", "nombre": "Resortes de apagador superior", "categoria": "Refacciones", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "RES-118", "nombre": "Resortes de martinetes", "categoria": "Refacciones", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "ROD-119", "nombre": "Rodajas sencillas de latón para piano", "categoria": "Refacciones", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "TIR-120", "nombre": "Tira de fieltro grueso", "categoria": "Refacciones", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "TOR-121", "nombre": "Tornillos para bisagras", "categoria": "Refacciones", "marca": "Shaff", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "", "notas": ""}, {"clave": "TIR-122", "nombre": "Tiras de contacto Yamaha", "categoria": "Refacciones electrónicos", "marca": "Yamaha", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "Yamaha Mexico", "notas": ""}, {"clave": "FIE-123", "nombre": "Fieltro amortiguador superior de teclas yamaha", "categoria": "Refacciones electrónicos", "marca": "Yamaha", "modelo": "", "precioCompra": 0, "precio": 0, "stock": 0, "stockMinimo": 0, "proveedor": "Yamaha Mexico", "notas": ""}];
@@ -3114,16 +4159,18 @@ function _openPresupuestoModal(titulo, boton, preCliId, presExistente){
   <div style="display:flex;gap:6px;align-items:center;margin:6px 0 4px">
     <input type="number" class="input" id="pb-pr" style="width:88px" placeholder="Precio">
     <button class="btn btn-ghost btn-sm" onclick="agregarItemPb('svc')">+ Agregar</button>
-    <button class="btn btn-ghost btn-sm" onclick="pbNuevoServicioRapido()">+ Nuevo</button>
+    <button class="btn btn-ghost btn-sm" onclick="_toggleRapido('pb-svc')">+ Nuevo</button>
   </div>
+  ${_quickAddPanelHTML('pb-svc','servicio',_catOptionsServicio())}
 
   <div class="modal-sub" style="margin-top:10px">Productos</div>
   <div id="pb-prod-wrap"></div>
   <div style="display:flex;gap:6px;align-items:center;margin:6px 0 4px">
     <input type="number" class="input" id="pb-prod-pr" style="width:88px" placeholder="Precio">
     <button class="btn btn-ghost btn-sm" onclick="agregarItemPb('prod')">+ Agregar</button>
-    <button class="btn btn-ghost btn-sm" onclick="pbNuevoProductoRapido()">+ Nuevo</button>
+    <button class="btn btn-ghost btn-sm" onclick="_toggleRapido('pb-prod')">+ Nuevo</button>
   </div>
+  ${_quickAddPanelHTML('pb-prod','producto',_catOptionsProducto())}
 
   <div class="modal-sub" style="margin-top:10px">Cotizadores</div>
   <div style="display:flex;gap:8px;margin-bottom:8px">
@@ -3158,11 +4205,13 @@ function _openPresupuestoModal(titulo, boton, preCliId, presExistente){
 }
 
 function showModalNuevoPresupuesto(preCliId){
+  window._crdPresOrden=null; // v3.6.2
   _openPresupuestoModal('Nuevo presupuesto','Crear presupuesto',preCliId,null);
 }
 function editarPresupuesto(id){
   const p=state.presupuestos.find(x=>x.id===id);
   if(!p)return;
+  window._crdPresOrden=null; // v3.6.2
   _openPresupuestoModal('Modificar presupuesto','Guardar cambios',null,p);
 }
 
@@ -3489,6 +4538,8 @@ function guardarPresupuesto(editId){
   // Nuevo presupuesto
   const newP={id:nextId(),clienteId,pianoId,fecha:new Date().toISOString().split('T')[0],items:[...pbItems]};
   state.presupuestos.push(newP);
+  // v3.6.2 — presupuesto generado desde una orden de cuerdas: queda vinculado a la orden
+  if(window._crdPresOrden){const r=window._crdPresOrden;window._crdPresOrden=null;if(r.clienteId===clienteId)crdVincularPresupuesto(r.ordenId,newP.id);}
   saveState();closeModal();
   // Si venimos del flujo "Generar presupuesto" desde una cita, regresar a la cita con items
   if(window._ncaPendiente){
@@ -3994,6 +5045,9 @@ function renderConfig(){
 
   </details>
 
+  <!-- v3.6.2 — módulo de cuerdas: inventario de alambre y parámetros -->
+  ${crdConfigHTML()}
+
   <!-- v2.9.6 — configuración cotizador fundas -->
   <details style="margin:0 0 2px">
   <summary style="padding:12px 16px;font-weight:700;font-size:14px;cursor:pointer;list-style:none;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;background:var(--bg)">
@@ -4078,7 +5132,7 @@ function renderConfig(){
   </div>
   <div class="credits-block">
     <div class="credits-logo">🎹</div>
-    <div class="credits-app">PianoTune Pro v3.4.1</div>
+    <div class="credits-app">PianoTune Pro v3.6.2</div>
     <div class="credits-dev">Desarrollado por Sergio L. Ruiz Jones</div>
     <div class="credits-co">Pianos and Pianos — Mazatlán, Sin.</div>
   </div>`;
@@ -5091,6 +6145,7 @@ var DT_NAV=[
   {id:'calendario',label:'Agenda', icon:'<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>'},
   {id:'contactar',label:'Por contactar',icon:'<path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/>'},
   {id:'cotizador',label:'Cotiz. Cuerdas',icon:'<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>'},
+  {id:'cuerdas',label:'Cuerdas',icon:'<path d="M2 12h20"/><path d="M7 8.5v7M10 8.5v7M13 8.5v7M16 8.5v7"/><circle cx="3" cy="12" r="1.5"/>'},
   {id:'servicios',label:'Servicios',icon:'<circle cx="12" cy="12" r="3"/><path d="M19.07 4.93l-1.41 1.41M4.93 4.93l1.41 1.41M12 2v2M12 20v2M2 12h2M20 12h2M16.95 16.95l1.41 1.41M4.93 19.07l1.41-1.41"/>'},
   {id:'productos',label:'Productos',icon:'<path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/>'},
   {id:'presupuesto',label:'Presupuestos',icon:'<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>'},
