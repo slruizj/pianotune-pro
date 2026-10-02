@@ -301,7 +301,7 @@ textarea.input{resize:vertical;min-height:68px}
     ☁️ <span id="dt-sync-txt">Listo</span>
   </div>
   <div style="padding:10px 16px 14px">
-    <div style="color:rgba(255,255,255,.35);font-size:10px;font-weight:600;letter-spacing:.4px">PianoTune Pro v3.6.3</div>
+    <div style="color:rgba(255,255,255,.35);font-size:10px;font-weight:600;letter-spacing:.4px">PianoTune Pro v3.7.0</div>
   </div>
 </div>
 
@@ -1596,6 +1596,87 @@ function crdMetrosExistencia(cal){
   crdLotes('cobre').filter(l=>crdCalLabel(l)===cal).forEach(l=>{const e=crdExistencia(l);if(e&&e.metros!=null)m=(m||0)+e.metros;});
   return m;
 }
+
+
+// ── Física de escala, calibrada contra Pscale (96 escalas; ver claude/DISENO_RESCALADOR.md) · v3.7.0 ──
+const CRD_FIS={rhoS:7850,rhoCu:8960,kCu:0.80,utsKsi:322,E:2.07e11,inhPscale:816.6,pitch:440,lbN:4.44822};
+const _CRD_PSI=6894.757;
+function crdFreq(n,pitch=CRD_FIS.pitch){return pitch*Math.pow(2,(n-49)/12);}
+// Masa por metro (kg/m). L y ends en mm; d y od en pulgadas.
+function crdMu(L,d,od,ends){
+  const dm=d*CRD_IN/1000,mu=CRD_FIS.rhoS*Math.PI/4*dm*dm;
+  if(!(od>d))return mu;
+  const om=od*CRD_IN/1000,Lm=L/1000,e=(ends==null?13:ends)/1000;
+  return mu+CRD_FIS.kCu*CRD_FIS.rhoCu*Math.PI/4*(om*om-dm*dm)*Math.max(0,Lm-2*e)/Lm;
+}
+// {T (N), lb, brk (%), inh (unidad Pscale), B}
+function crdFisica(n,L,d,od,ends){
+  if(!(n>0&&L>0&&d>0))return null;
+  const f=crdFreq(n),Lm=L/1000,T=4*Lm*Lm*f*f*crdMu(L,d,od,ends);
+  const dm=d*CRD_IN/1000,area=Math.PI/4*dm*dm;
+  const brk=T/(area*CRD_FIS.utsKsi*1000*_CRD_PSI)*100;
+  const B=Math.pow(Math.PI,3)*CRD_FIS.E*Math.pow(dm,4)/(64*T*Lm*Lm);
+  return {T,lb:T/CRD_FIS.lbN,brk,inh:B*CRD_FIS.inhPscale,B};
+}
+// Cuerda faltante: datos de la nota grave (ant) y aguda (sig) existentes + largo de la faltante.
+// ant/sig: {nota,L,d,od,ends}; f: {nota,L,ends,tipo}. Devuelve {error} o {lisa|entorchada, d, od, T, brk, inh, ref:{ant,sig,obj}}
+function crdCalcFaltante(ant,sig,f){
+  const r1=v=>Math.round(v*1000)/1000;
+  if(!(ant&&sig&&f))return {error:'Faltan datos.'};
+  if(!(ant.nota<f.nota&&f.nota<sig.nota))return {error:'La nota faltante debe quedar entre la anterior (más grave) y la siguiente (más aguda).'};
+  for(const [x,lab] of [[ant,'anterior'],[sig,'siguiente'],[f,'faltante']])if(!(x.L>20))return {error:`Falta el largo vibrante de la nota ${lab} (mm).`};
+  if(!(ant.d>0&&sig.d>0))return {error:'Falta el diámetro (D) de las notas de referencia.'};
+  const wA=ant.od>ant.d,wS=sig.od>sig.d,wF=!!CRD_TIPOS[f.tipo];
+  if(wA!==wS)return {error:'Una referencia es lisa y la otra entorchada (la faltante está en el break). Usa dos notas del mismo tipo como referencia.'};
+  if(wA!==wF)return {error:wA?'Las referencias son entorchadas: elige un tipo entorchado para la faltante.':'Las referencias son lisas: la faltante debe ser lisa.'};
+  const fa=crdFisica(ant.nota,ant.L,ant.d,ant.od,ant.ends),fs=crdFisica(sig.nota,sig.L,sig.d,sig.od,sig.ends);
+  const w=(f.nota-ant.nota)/(sig.nota-ant.nota),lin=(a,b)=>a+(b-a)*w;
+  const Tobj=lin(fa.T,fs.T),brkObj=lin(fa.brk,fs.brk);
+  const avisos=[];
+  if(Math.abs(fa.T/fs.T-1)>.15)avisos.push('Las referencias tienen tensiones muy distintas (¿cambio de sencilla a doble o de sección?). Usa dos notas del mismo tipo.');
+  if(!wF){
+    // Lisa: calibres de .001 entre los de las vecinas; el que más se acerca a la tensión interpolada
+    const lo=Math.min(ant.d,sig.d),hi=Math.max(ant.d,sig.d),cand=[];
+    for(let d=r1(lo);d<=hi+1e-9;d=r1(d+.001))cand.push(d);
+    [ant.d,sig.d].forEach(d=>{if(!cand.some(c=>Math.abs(c-d)<1e-6))cand.push(d);});
+    let best=null;
+    cand.forEach(d=>{const x=crdFisica(f.nota,f.L,d);const err=Math.abs(x.T-Tobj);if(!best||err<best.err)best={d,x,err};});
+    return {lisa:true,avisos,d:best.d,od:null,T:best.x.T,lb:best.x.lb,brk:best.x.brk,inh:best.x.inh,ref:{ant:fa,sig:fs,obj:{lb:Tobj/CRD_FIS.lbN,brk:brkObj}}};
+  }
+  // Entorchada: núcleo por % de ruptura, cobre por masa
+  const ends=f.ends!=null?f.ends:13;
+  const Ac=Tobj/(brkObj/100*CRD_FIS.utsKsi*1000*_CRD_PSI);
+  const dExact=Math.sqrt(4*Ac/Math.PI)*1000/CRD_IN;
+  let cands=[r1(Math.floor(dExact*1000)/1000),r1(Math.ceil(dExact*1000)/1000)];
+  const lote=crdLoteAcero(dExact);if(lote)cands.push(+(Number(lote.diamNominal).toFixed(4)));
+  const fq=crdFreq(f.nota),Lm=f.L/1000,muObj=Tobj/(4*Lm*Lm*fq*fq);
+  const odPara=d=>{
+    const dm=d*CRD_IN/1000,mus=CRD_FIS.rhoS*Math.PI/4*dm*dm,e=ends/1000;
+    const x=(muObj-mus)/(CRD_FIS.kCu*CRD_FIS.rhoCu*Math.PI/4*Math.max(1e-6,Lm-2*e)/Lm);
+    return x>0?Math.sqrt(dm*dm+x)*1000/CRD_IN:null;
+  };
+  let best=null;
+  cands.forEach(d=>{
+    const od0=odPara(d);if(!od0)return;
+    const od=r1(od0),x=crdFisica(f.nota,f.L,d,od,ends);
+    const err=Math.abs(x.brk-brkObj)/brkObj+Math.abs(x.T-Tobj)/Tobj;
+    if(!best||err<best.err)best={d,od,x,err};
+  });
+  if(!best)return {error:'No se pudo calcular: revisa los datos de las referencias.'};
+  return {lisa:false,avisos,d:best.d,od:best.od,T:best.x.T,lb:best.x.lb,brk:best.x.brk,inh:best.x.inh,ends,odd:best.od/best.d,
+    ref:{ant:fa,sig:fs,obj:{lb:Tobj/CRD_FIS.lbN,brk:brkObj}}};
+}
+// Convierte el resultado en cuerdas de fabricación (misma traducción que una escala Pscale)
+function crdCuerdasFaltante(res,f,bphps,cfg=crdCfg()){
+  const t=CRD_TIPOS[f.tipo];
+  const esc={steplen:cfg.awsmDefault,notas:[{nota:f.nota,tipo:f.tipo,splm:f.L,diam:res.d,od:res.od,ends:res.ends,ten:+(res.lb/100).toFixed(2),
+    brk:Math.round(res.brk),inh:res.inh,bphp:[0,1,2].map(i=>_crdNum(bphps&&bphps[i])),lsplm:'',awsm:null,wrapcon:''}]};
+  const r=crdCuerdasDesdeEscala(esc,cfg);
+  const cuantas=Math.max(1,Math.min(t.n,parseInt(f.cuantas,10)||t.n));
+  r.cuerdas=r.cuerdas.slice(0,cuantas);
+  r.cuerdas.forEach(c=>{c.notas=`Calculada (nota faltante) a partir de las notas ${f.antNota} y ${f.sigNota}.`;c.origenDatos.calculada=true;});
+  return r;
+}
 // ══════════════════════════════════════════════════════════
 // MÓDULO CUERDAS — v3.6.1 · Etapas 2 y 3: pantallas y ficha de taller
 // ══════════════════════════════════════════════════════════
@@ -1682,7 +1763,7 @@ function crdSeccionPiano(clienteId,pianoId){
   return `<div class="modal-sub">🎼 Cuerdas${os.length?` (${os.length})`:''}</div>
   ${os.map(o=>{const r=crdResumenOrden(o),[l,cls]=_CRD_EST[o.estado]||_CRD_EST.borrador;
     return `<div class="list-item" onclick="crdModalOrden('${o.id}')">
-      <div style="flex:1"><div class="item-title">${o.folio} <span style="font-size:11px;color:var(--text2);font-weight:400">${o.origen==='pscale'?'Pscale · '+_crdEsc(o.escala&&o.escala.nombre||''):'Cuerda física'}</span></div>
+      <div style="flex:1"><div class="item-title">${o.folio} <span style="font-size:11px;color:var(--text2);font-weight:400">${o.origen==='pscale'?'Pscale · '+_crdEsc(o.escala&&o.escala.nombre||''):o.origen==='calculada'?'Cuerda calculada':'Cuerda física'}</span></div>
       <div class="item-sub">${fmtDate(o.fechaCreada)} · ${r.hechas}/${r.total} hechas</div></div>
       <span class="tag ${cls}">${l}</span></div>`;}).join('')}
   <button class="btn btn-outline btn-full btn-sm" style="margin-top:6px" onclick="crdModalNuevaOrden(${clienteId},${pianoId})">+ Nueva orden de cuerdas</button>`;
@@ -1709,7 +1790,10 @@ function crdModalNuevaOrden(clienteId,pianoId){
     <div style="font-size:12px;color:var(--text2);margin-top:2px">Medir la muestra: D, OD/F, E, G, A, B, H</div></button>
   <button class="card" style="width:100%;margin:0;text-align:left;border:1.5px solid var(--border);cursor:pointer" onclick="crdModalImportar(${clienteId},${pianoId})">
     <div style="font-weight:700;font-size:15px">📥 Importar escala Pscale</div>
-    <div style="font-size:12px;color:var(--text2);margin-top:2px">Archivo .txt o pegar su contenido</div></button>`);
+    <div style="font-size:12px;color:var(--text2);margin-top:2px">Archivo .txt o pegar su contenido</div></button>
+  <button class="card" style="width:100%;margin:10px 0 0;text-align:left;border:1.5px solid var(--border);cursor:pointer" onclick="crdModalFaltante(null,${clienteId},${pianoId})">
+    <div style="font-weight:700;font-size:15px">🧮 Calcular cuerda faltante</div>
+    <div style="font-size:12px;color:var(--text2);margin-top:2px">Nota perdida sin referencia: se calcula con la anterior y la siguiente</div></button>`);
 }
 function crdNoPianos(){
   const c=getCliente(+document.getElementById('crd-no-c').value),sel=document.getElementById('crd-no-p');
@@ -1832,7 +1916,7 @@ function crdModalOrden(id,filtro){
   openModal(`<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
     <div><div class="modal-title" style="margin-bottom:2px">${o.folio}</div>
     <div style="font-size:12px;color:var(--text2)">${_crdPianoTxt(o)}</div>
-    <div style="font-size:11px;color:var(--text3)">${o.origen==='pscale'?'Pscale · '+_crdEsc(o.escala&&o.escala.nombre||''):'Cuerda física'} · ${fmtDate(o.fechaCreada)}</div></div>
+    <div style="font-size:11px;color:var(--text3)">${o.origen==='pscale'?'Pscale · '+_crdEsc(o.escala&&o.escala.nombre||''):o.origen==='calculada'?'Cuerda calculada':'Cuerda física'} · ${fmtDate(o.fechaCreada)}</div></div>
     <span class="tag ${cls}">${l}</span></div>
   ${_crdBarra(o)}
   ${_crdSegmento(_crdFiltroOrden,`crdModalOrden.bind(null,'${o.id}')`)}
@@ -1843,6 +1927,7 @@ function crdModalOrden(id,filtro){
     <button class="btn btn-ghost btn-sm" onclick="crdModalMateriales('${o.id}')">📦 Materiales</button>
     <button class="btn btn-ghost btn-sm" onclick="crdModalCaptura('${o.id}')">+ Agregar cuerda</button>
   </div>
+  <button class="btn btn-ghost btn-full btn-sm" style="margin-top:8px" onclick="crdModalFaltante('${o.id}')">🧮 Calcular cuerda faltante</button>
   <button class="btn btn-outline btn-full btn-sm" style="margin-top:8px" onclick="crdModalPresupuesto('${o.id}')">🧾 ${o.presupuestoId?'Presupuesto ✓':'Generar presupuesto'}</button>
   ${o.estado==='terminada'?`<button class="btn btn-outline btn-full btn-sm" style="margin-top:8px" onclick="crdMarcarInstalada('${o.id}')">✓ Marcar como instalada</button>`:''}
   <button class="btn btn-ghost btn-full btn-sm" style="margin-top:8px" onclick="closeModal();showModalPiano(${o.clienteId},${o.pianoId})">Ver piano</button>
@@ -2172,6 +2257,92 @@ function crdGuardarLoteUI(material,id,irA){
   _crdCfgAbierto=true;
   if(irA){if(cambio)showToast(`${l.clave} guardado ✓`,1200);crdModalLote(material,irA);return;}
   closeModal();renderConfig();showToast(`${l.clave} ${!prev?'dado de alta':cambio?'actualizado':'sin cambios'} ✓`);
+}
+
+// ══ CUERDA FALTANTE (v3.7.0): calcular una nota perdida a partir de sus vecinas ══
+let _crdFal={ordenId:null,clienteId:null,pianoId:null,res:null,f:null};
+function crdModalFaltante(ordenId,clienteId,pianoId){
+  crdLiberarPantalla();
+  const o=ordenId!=null?crdGetOrden(ordenId):null;
+  _crdFal={ordenId:o?o.id:null,clienteId:o?o.clienteId:clienteId,pianoId:o?o.pianoId:pianoId,res:null,f:null};
+  const inp=(id,ph,extra='')=>`<input class="input" id="${id}" inputmode="decimal" placeholder="${ph}" style="padding:8px 6px;font-size:14px;text-align:center" ${extra}>`;
+  const fila=(lbl,a,f,s)=>`<div style="font-size:11px;font-weight:700;color:var(--text2);margin:8px 0 3px">${lbl}</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">${a}${f}${s}</div>`;
+  const res=t=>`<div style="padding:8px 6px;font-size:13px;text-align:center;color:var(--text3);border:1.5px dashed var(--border);border-radius:var(--radius-sm)">${t}</div>`;
+  openModal(`<div class="modal-title">🧮 Cuerda faltante${o?' · '+o.folio:''}</div>
+  <div style="font-size:12px;color:var(--text2);margin-bottom:8px">Mide la nota anterior y la siguiente que sí existen, y el largo de la que falta. La app interpola tensión y % de ruptura y calcula el acero y el cobre.</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;text-align:center;font-size:12px;font-weight:800">
+    <div>Anterior<div style="font-weight:400;color:var(--text3);font-size:10px">más grave</div></div>
+    <div style="color:var(--primary)">Faltante</div>
+    <div>Siguiente<div style="font-weight:400;color:var(--text3);font-size:10px">más aguda</div></div></div>
+  ${fila('Nota (1 = La0)',inp('crd-fa-na','Nota'),inp('crd-fa-nf','Nota','oninput="crdFalNotas()" style="padding:8px 6px;font-size:14px;text-align:center;border-color:var(--primary)"'),inp('crd-fa-ns','Nota'))}
+  ${fila('Largo vibrante (mm)',inp('crd-fa-La','mm'),inp('crd-fa-Lf','mm'),inp('crd-fa-Ls','mm'))}
+  ${fila('D · núcleo o acero liso',inp('crd-fa-da','.041 o 41'),res('calcula'),inp('crd-fa-ds','.041 o 41'))}
+  ${fila('OD (vacío si es lisa)',inp('crd-fa-oa','.112 o 112'),res('calcula'),inp('crd-fa-os','.112 o 112'))}
+  ${fila('ENDS (mm)',inp('crd-fa-ea','13'),inp('crd-fa-ef','13'),inp('crd-fa-es','13'))}
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px">
+    <div class="input-group" style="margin-bottom:8px"><label class="input-label">Tipo de la faltante</label>
+      <select class="input select" id="crd-fa-tipo" onchange="crdFalTipo()"><option value="LISA">Lisa (acero)</option>${Object.keys(CRD_TIPOS).map(t=>`<option ${t==='BS'?'selected':''}>${t}</option>`).join('')}</select></div>
+    <div class="input-group" style="margin-bottom:8px" id="crd-fa-cbox"><label class="input-label">Cuerdas a fabricar</label><select class="input select" id="crd-fa-cuantas" onchange="crdFalTipo()"></select></div>
+  </div>
+  <div id="crd-fa-bphp"></div>
+  <button class="btn btn-primary btn-full" onclick="crdFalCalcular()">Calcular</button>
+  <div id="crd-fa-res" style="margin-top:12px"></div>
+  ${o?`<button class="btn btn-ghost btn-full btn-sm" style="margin-top:6px" onclick="crdModalOrden('${o.id}')">← Volver a la orden</button>`:''}`);
+  crdFalTipo();
+}
+function crdFalNotas(){
+  const n=parseInt(document.getElementById('crd-fa-nf').value,10);if(!(n>=2&&n<=87))return;
+  document.getElementById('crd-fa-na').value=n-1;document.getElementById('crd-fa-ns').value=n+1;
+}
+function crdFalTipo(){
+  const t=document.getElementById('crd-fa-tipo').value,T=CRD_TIPOS[t],cs=document.getElementById('crd-fa-cuantas');
+  document.getElementById('crd-fa-cbox').style.visibility=T?'visible':'hidden';
+  if(T){const prev=parseInt(cs.value,10)||T.n;cs.innerHTML=Array.from({length:T.n},(_,i)=>`<option ${i+1===Math.min(prev,T.n)?'selected':''}>${i+1}</option>`).join('');}
+  const k=T?parseInt(cs.value,10)||T.n:0,box=document.getElementById('crd-fa-bphp'),old=[0,1,2].map(i=>{const e=document.getElementById('crd-fa-b'+i);return e?e.value:'';});
+  box.innerHTML=k?`<div style="font-size:11px;font-weight:700;color:var(--text2);margin:0 0 3px">BPHP de la faltante (mm) · hitch pin a pin de puente</div>
+    <div style="display:grid;grid-template-columns:repeat(${k},1fr);gap:6px;margin-bottom:10px">${Array.from({length:k},(_,i)=>`<input class="input" id="crd-fa-b${i}" inputmode="decimal" placeholder="Cuerda ${i+1}" value="${old[i]}" style="padding:8px 6px;text-align:center">`).join('')}</div>`:'';
+}
+function crdFalCalcular(){
+  const v=id=>document.getElementById(id).value,n=id=>_crdNum(v(id)),p=id=>{const x=crdPulg(v(id));return x>0?x:null;};
+  const tipo=v('crd-fa-tipo'),ant={nota:n('crd-fa-na'),L:n('crd-fa-La'),d:p('crd-fa-da'),od:p('crd-fa-oa'),ends:n('crd-fa-ea')};
+  const sig={nota:n('crd-fa-ns'),L:n('crd-fa-Ls'),d:p('crd-fa-ds'),od:p('crd-fa-os'),ends:n('crd-fa-es')};
+  const f={nota:n('crd-fa-nf'),L:n('crd-fa-Lf'),ends:n('crd-fa-ef'),tipo,cuantas:v('crd-fa-cuantas'),antNota:ant.nota,sigNota:sig.nota};
+  const box=document.getElementById('crd-fa-res');
+  if(!(f.nota>=2&&f.nota<=87)){box.innerHTML='<div style="color:var(--danger);font-size:13px">Escribe la nota faltante (2 a 87).</div>';return;}
+  const r=crdCalcFaltante(ant,sig,f);_crdFal.res=r;_crdFal.f=f;
+  if(r.error){box.innerHTML=`<div style="background:var(--danger-light);color:var(--danger);border-radius:8px;padding:10px;font-size:13px">${_crdEsc(r.error)}</div>`;return;}
+  const col=(lbl,x,hl)=>`<div style="text-align:center;${hl?'background:var(--primary-light);border-radius:8px;padding:4px 0':''}"><div style="font-size:10px;color:var(--text2)">${lbl}</div>
+    <div style="font-weight:700">${Math.round(x.lb)} lb</div><div style="font-size:12px">${x.brk.toFixed(0)} %</div><div style="font-size:11px;color:var(--text2)">INH ${x.inh.toFixed(3)}</div></div>`;
+  let extra='';
+  if(!r.lisa){
+    const bp=[0,1,2].map(i=>{const e=document.getElementById('crd-fa-b'+i);return e?e.value:'';});
+    const prev=crdCuerdasFaltante(r,f,bp),c0=prev.cuerdas[0];_crdFal.prev=prev;
+    extra=`<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:10px">
+      <div class="stat-card" style="padding:8px;background:var(--bg)"><div style="font-size:10px;color:var(--text2)">D núcleo</div><div style="font-size:18px;font-weight:800">${_crdIn(r.d)}</div></div>
+      <div class="stat-card" style="padding:8px;background:var(--bg)"><div style="font-size:10px;color:var(--text2)">OD</div><div style="font-size:18px;font-weight:800">${_crdIn(r.od)}</div></div>
+      <div class="stat-card" style="padding:8px;background:var(--bg)"><div style="font-size:10px;color:var(--text2)">Cobre</div><div style="font-size:14px;font-weight:800">${c0?_crdCobreTxt(c0):'—'}</div></div></div>
+      <div style="font-size:12px;color:var(--text2);margin-top:6px">OD/D ${r.odd.toFixed(2)}${r.odd>3.4&&!CRD_TIPOS[f.tipo].doble?' · <b style="color:var(--warning)">alto para sencilla: considera doble</b>':''}
+      ${prev.cuerdas.map(c=>`<br>Cuerda ${c.cuerda}: ${c.faltaA?'<b style="color:var(--warning)">falta BPHP</b>':`A ${_crdMm(c.A)} · B ${_crdMm(c.B)} · H ${_crdMm(c.H)}`}`).join('')}</div>
+      <button class="btn btn-success btn-full" style="margin-top:10px" onclick="crdFalAgregar()">${_crdFal.ordenId?'Agregar a la orden':'Crear orden con esta cuerda'} (${prev.cuerdas.length})</button>`;
+  }else{
+    extra=`<div style="background:var(--bg);border-radius:10px;padding:12px;margin-top:10px;text-align:center">
+      <div style="font-size:12px;color:var(--text2)">Acero liso</div><div style="font-size:26px;font-weight:800">${_crdIn(r.d)}</div>
+      <div style="font-size:12px;color:var(--text2)">Se instala de rollo; no genera orden de fabricación.</div></div>`;
+  }
+  box.innerHTML=`<div class="modal-sub">Resultado</div>
+  ${(r.avisos||[]).map(a=>`<div style="background:var(--warning-light);border-radius:8px;padding:8px 10px;margin-bottom:8px;font-size:12px">⚠️ ${_crdEsc(a)}</div>`).join('')}
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">${col('Anterior',r.ref.ant)}${col('Calculada',r,true)}${col('Siguiente',r.ref.sig)}</div>
+  <div style="font-size:11px;color:var(--text3);margin-top:4px;text-align:center">Objetivo interpolado: ${Math.round(r.ref.obj.lb)} lb · ${r.ref.obj.brk.toFixed(0)} %${r.lisa?'':' · INH de entorchadas sin efecto de puntas (comparativo)'}</div>
+  ${extra}`;
+}
+function crdFalAgregar(){
+  const pv=_crdFal.prev;if(!pv||!pv.cuerdas.length)return;
+  let o=_crdFal.ordenId!=null?crdGetOrden(_crdFal.ordenId):null;
+  if(!o){o=crdNuevaOrdenMuestra(_crdFal.clienteId,_crdFal.pianoId);o.origen='calculada';o=crdGuardarOrden(o);}
+  pv.cuerdas.forEach(c=>{o.cuerdas.push(c);});
+  _crdRefoliar(o);crdGuardarOrden(o);
+  showToast(`${pv.cuerdas.length} cuerda(s) agregada(s) a ${o.folio} ✓`);_crdRefrescar();crdModalOrden(o.id);
 }
 crdInit();
 
@@ -2559,7 +2730,7 @@ async function renderInicio(){
         ${perfAvatar}
         <div><div class="page-title">Hola, ${tec.nombre||'Técnico'}</div>
         <div class="page-sub">${new Date().toLocaleDateString('es-MX',{weekday:'long',day:'numeric',month:'long'})}</div>
-        <div style="font-size:10px;color:var(--text3);margin-top:1px;letter-spacing:.3px">PianoTune Pro v3.6.3</div></div>
+        <div style="font-size:10px;color:var(--text3);margin-top:1px;letter-spacing:.3px">PianoTune Pro v3.7.0</div></div>
       </div>
       <button class="btn btn-ghost btn-xs" onclick="navigate('config')">⚙ Config</button>
     </div>
@@ -5207,7 +5378,7 @@ function renderConfig(){
   </div>
   <div class="credits-block">
     <div class="credits-logo">🎹</div>
-    <div class="credits-app">PianoTune Pro v3.6.3</div>
+    <div class="credits-app">PianoTune Pro v3.7.0</div>
     <div class="credits-dev">Desarrollado por Sergio L. Ruiz Jones</div>
     <div class="credits-co">Pianos and Pianos — Mazatlán, Sin.</div>
   </div>`;
