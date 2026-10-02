@@ -301,7 +301,7 @@ textarea.input{resize:vertical;min-height:68px}
     ☁️ <span id="dt-sync-txt">Listo</span>
   </div>
   <div style="padding:10px 16px 14px">
-    <div style="color:rgba(255,255,255,.35);font-size:10px;font-weight:600;letter-spacing:.4px">PianoTune Pro v3.6.2</div>
+    <div style="color:rgba(255,255,255,.35);font-size:10px;font-weight:600;letter-spacing:.4px">PianoTune Pro v3.6.3</div>
   </div>
 </div>
 
@@ -1460,7 +1460,7 @@ function crdMarcarHecha(ordenId,folio,{odReal,odInteriorReal,D_loteId,E_loteId,F
   if(E_loteId!=null)c.E_loteId=E_loteId;
   if(F_loteId!=null)c.F_loteId=F_loteId;
   const hoy=new Date().toISOString().split('T')[0];
-  c.estado='hecha';c.fechaHecha=hoy;c.odReal=od;c.odInteriorReal=odi;
+  c.estado='hecha';c.fechaHecha=hoy;c.hechaEn=Date.now();c.odReal=od;c.odInteriorReal=odi;
   const base={fecha:hoy,ordenId:o.id,folioCuerda:c.folio,D:c.D,D_ef:crdDEf(c),D_loteId:c.D_loteId,descartada:false};
   state.combinacionesCobre.push(Object.assign({id:nextId(),capa:c.doble?'doble':'sencilla',
     E_cal:c.E_cal,E_loteId:c.E_loteId,F_cal:c.F_cal,F_loteId:c.F_loteId,odCalculado:c.odCalc,odReal:od},base));
@@ -1488,7 +1488,7 @@ function crdCorregirOdReal(ordenId,folio,{odReal,odInteriorReal}={}){
 function crdRehacer(ordenId,folio){
   const o=crdGetOrden(ordenId),c=crdGetCuerda(o,folio);if(!c)return null;
   _crdCombosVivos(o,c).forEach(r=>{r.descartada=true;r.updatedAt=Date.now();});
-  c.estado='pendiente';c.fechaHecha=null;c.odReal=null;c.odInteriorReal=null;
+  c.estado='pendiente';c.fechaHecha=null;c.hechaEn=null;c.odReal=null;c.odInteriorReal=null;
   if(o.estado==='terminada'){o.estado='fabricacion';o.fechaTerminada=null;}
   crdGuardarOrden(o);return c;
 }
@@ -1561,6 +1561,40 @@ function crdConceptosOrden(o,tipo,catId){
   });
   return ['dw','bass','mid','high'].filter(k=>g[k]).map(k=>{const x=g[k];x.precio=x.precioUnit*x.cant;
     x.nombre=`${x.cant}× Cuerda ${x.label} · notas ${x.notas[0]===x.notas[1]?x.notas[0]:x.notas[0]+'–'+x.notas[1]} (${cat.label}) · ${o.folio}`;return x;});
+}
+
+// ── Existencia por peso (v3.6.3) ──
+// El peso capturado en la báscula no se modifica nunca; el consumo es un estimado aparte.
+const CRD_CU_DENS=8.96; // g/cm³
+// Gramos por metro de alambre de cobre de diámetro d (pulgadas): área mm² × 8.96
+function crdGramosPorMetro(d){const mm=(Number(d)||0)*CRD_IN;return Math.PI/4*mm*mm*CRD_CU_DENS;}
+// ¿La cuerda se hizo después del pesaje? (hechaEn exacto; si no existe, por fecha: solo días posteriores)
+function _crdDespuesDe(c,l){
+  if(!l.pesadoEn)return true;
+  if(c.hechaEn)return c.hechaEn>l.pesadoEn;
+  return (c.fechaHecha||'')>(new Date(l.pesadoEn).toISOString().split('T')[0]);
+}
+// {bruto,tara,neto,consumo,cuerdas,estimado,gm,metros} — consumo solo para cobre y solo desde el último pesaje
+function crdExistencia(l){
+  const bruto=Number(l.pesoBruto),tara=Number(l.tara)||0;
+  if(!(bruto>0))return null;
+  const neto=Math.max(0,bruto-tara),r={bruto,tara,neto,consumo:0,cuerdas:0,estimado:neto,gm:0,metros:null};
+  if(l.material!=='cobre')return r;
+  r.gm=crdGramosPorMetro(crdDiamLote(l));
+  (state.ordenesCuerdas||[]).forEach(o=>(o.cuerdas||[]).forEach(c=>{
+    if(c.estado!=='hecha'||!_crdDespuesDe(c,l))return;
+    const usos=crdMetrosCuerda(c).filter(u=>u.loteId!=null&&String(u.loteId)===String(l.id));
+    if(usos.length){r.cuerdas++;usos.forEach(u=>r.consumo+=u.metros*r.gm);}
+  }));
+  r.consumo=Math.round(r.consumo);r.estimado=Math.max(0,neto-r.consumo);
+  r.metros=r.gm>0?r.estimado/r.gm:null;
+  return r;
+}
+// Metros de cobre estimados en existencia por calibre (suma de lotes activos pesados; null si ninguno pesado)
+function crdMetrosExistencia(cal){
+  let m=null;
+  crdLotes('cobre').filter(l=>crdCalLabel(l)===cal).forEach(l=>{const e=crdExistencia(l);if(e&&e.metros!=null)m=(m||0)+e.metros;});
+  return m;
 }
 // ══════════════════════════════════════════════════════════
 // MÓDULO CUERDAS — v3.6.1 · Etapas 2 y 3: pantallas y ficha de taller
@@ -1822,10 +1856,12 @@ function crdConfirmarEliminar(id){
 }
 function crdModalMateriales(id){
   crdLiberarPantalla();const o=crdGetOrden(id);if(!o)return;const m=crdMaterialesOrden(o);
-  const tabla=arr=>arr.length?arr.map(r=>`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:13px"><span>${r.cal}</span><b>${_crdMm(r.metros)} m</b></div>`).join(''):'<div style="font-size:12px;color:var(--text3);padding:6px 0">Nada pendiente.</div>';
+  const tabla=(arr,ex)=>arr.length?arr.map(r=>{const hay=ex?crdMetrosExistencia(r.cal):null,falta=hay!=null&&hay<r.metros;
+    return `<div style="display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);font-size:13px"><span>${r.cal}</span>
+    <span>${ex?`<span style="font-size:11px;color:${falta?'var(--danger)':'var(--text3)'};margin-right:8px">${hay==null?'sin pesar':(falta?'⚠️ hay ≈ ':'hay ≈ ')+Math.round(hay)+' m'}</span>`:''}<b>${_crdMm(r.metros)} m</b></span></div>`;}).join(''):'<div style="font-size:12px;color:var(--text3);padding:6px 0">Nada pendiente.</div>';
   openModal(`<div class="modal-title">📦 Materiales · ${o.folio}</div>
   <div style="font-size:12px;color:var(--text2);margin-bottom:8px">Metros de cobre sin merma (vueltas × π × diámetro de la hélice).</div>
-  <div class="modal-sub">Pendiente de fabricar</div>${tabla(m.pendiente)}
+  <div class="modal-sub">Pendiente de fabricar</div>${tabla(m.pendiente,true)}
   <div class="modal-sub">Orden completa · ${_crdMm(m.totalMetros)} m</div>${tabla(m.total)}
   <button class="btn btn-ghost btn-full btn-sm" style="margin-top:12px" onclick="crdModalOrden('${o.id}')">← Volver a la orden</button>`);
 }
@@ -2014,6 +2050,7 @@ function crdConfigHTML(){
       <div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:600">${_crdEsc(l.clave)}${act?'':' · inactivo'}</div>
       <div style="font-size:11px;color:var(--text2)">${_crdIn4(l.diamNominal)}${Number(l.diamMedido)?` · real <b>${_crdIn4(l.diamMedido)}</b>`:''}${l.marca?' · '+_crdEsc(l.marca):''}${l.proveedor?' · '+_crdEsc(l.proveedor):''}</div>
       ${av?`<div style="font-size:11px;color:var(--warning);font-weight:600">⚠️ ${av}</div>`:''}</div>
+      <div style="text-align:right;font-size:12px;flex-shrink:0;margin-right:6px">${_crdPesoTxt(l)}</div>
       <span style="color:var(--text3)">›</span></div>`;};
   const acero=crdLotesTodos('acero'),cobre=crdLotesTodos('cobre');
   const nCombos=(state.combinacionesCobre||[]).filter(r=>!r.descartada).length;
@@ -2049,7 +2086,13 @@ function crdModalLote(material,id){
   const l=id!=null?crdGetLote(id):null,ac=material==='acero';
   const awgOpts=Object.keys(CRD_AWG).map(Number).sort((a,b)=>b-a).map(g=>`<option value="${g}" ${g===27?'selected':''}>AWG ${g} · ${_crdIn4(CRD_AWG[g])}</option>`).join('');
   const marcaSel=l?l.marca:'Roslau',otra=ac&&l&&l.marca&&!CRD_MARCAS_ACERO.includes(l.marca);
+  const lista=l?crdLotesTodos(material):[],ix=l?lista.findIndex(x=>String(x.id)===String(l.id)):-1,ant=lista[ix-1],sig=lista[ix+1];
+  const ex=l?crdExistencia(l):null;
   openModal(`<div class="modal-title">${l?'Lote '+_crdEsc(l.clave):ac?'+ Carrete de acero':'+ Carrete de cobre'}</div>
+  ${l?`<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:-4px 0 12px">
+    <button class="btn btn-ghost btn-sm" ${ant?`onclick="crdGuardarLoteUI('${material}','${l.id}','${ant.id}')"`:'disabled style="opacity:.35"'}>← ${ant?_crdEsc(ant.clave):''}</button>
+    <button class="btn btn-ghost btn-sm" ${sig?`onclick="crdGuardarLoteUI('${material}','${l.id}','${sig.id}')"`:'disabled style="opacity:.35"'}>${sig?_crdEsc(sig.clave):''} →</button></div>
+    <div style="font-size:11px;color:var(--text3);margin:-6px 0 10px;text-align:center">Las flechas guardan los cambios y pasan al siguiente lote.</div>`:''}
   ${ac?`<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
     <div class="input-group"><label class="input-label">Marca</label><select class="input select" id="crd-l-marca" onchange="document.getElementById('crd-l-otra').style.display=this.value==='Otra'?'':'none';crdLoteAvisoUI()">
       ${CRD_MARCAS_ACERO.map(m=>`<option ${(otra?'Otra':marcaSel)===m?'selected':''}>${m}</option>`).join('')}</select>
@@ -2066,22 +2109,46 @@ function crdModalLote(material,id){
   <div class="input-group"><label class="input-label">Diámetro medido (micrómetro)${ac?'':' · opcional'}</label>
     <input class="input" id="crd-l-med" inputmode="decimal" placeholder="Si lo mides, el cálculo usa este valor" value="${l&&Number(l.diamMedido)?_crdIn4(l.diamMedido):''}" oninput="crdLoteAvisoUI()"></div>
   <div id="crd-l-aviso" style="font-size:12px;color:var(--warning);font-weight:600;min-height:4px;margin:-6px 0 8px"></div>
+  <div class="modal-sub">Existencia</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+    <div class="input-group" style="margin-bottom:6px"><label class="input-label">Peso total (g)</label><input class="input" id="crd-l-bruto" inputmode="decimal" placeholder="En la báscula" value="${l&&Number(l.pesoBruto)?l.pesoBruto:''}" oninput="crdLotePesoUI()" style="font-size:18px;font-weight:700"></div>
+    <div class="input-group" style="margin-bottom:6px"><label class="input-label">${ac?'Canister vacío (g)':'Carrete vacío (g)'}</label><input class="input" id="crd-l-tara" inputmode="decimal" placeholder="Si lo conoces" value="${l&&Number(l.tara)?l.tara:''}" oninput="crdLotePesoUI()"></div>
+  </div>
+  <div id="crd-l-neto" style="font-size:12px;color:var(--text2);margin-bottom:6px"></div>
+  ${ex&&!ac?`<div style="background:var(--bg);border-radius:8px;padding:8px 10px;margin-bottom:12px;font-size:12px;line-height:1.5">
+    Pesado el ${fmtDate(l.fechaPesaje)} · neto ${_crdG(ex.neto)}<br>
+    Consumo estimado desde entonces: <b>${_crdG(ex.consumo)}</b> (${ex.cuerdas} cuerda${ex.cuerdas===1?'':'s'})<br>
+    Quedan aprox. <b>${_crdG(ex.estimado)}</b>${ex.metros!=null?` ≈ ${Math.round(ex.metros)} m`:''} <span style="color:var(--text3)">· ${ex.gm.toFixed(1)} g/m, sin merma</span></div>`
+  :ex?`<div style="font-size:12px;color:var(--text3);margin-bottom:12px">Pesado el ${fmtDate(l.fechaPesaje)}</div>`:''}
   <div class="input-group"><label class="input-label">Proveedor</label><input class="input" id="crd-l-prov" value="${_crdEsc(l&&l.proveedor||'')}" placeholder="Opcional"></div>
   <div class="input-group"><label class="input-label">Notas</label><input class="input" id="crd-l-notas" value="${_crdEsc(l&&l.notas||'')}" placeholder="Opcional"></div>
   <button class="btn btn-primary btn-full" onclick="crdGuardarLoteUI('${material}',${l?`'${l.id}'`:'null'})">${l?'Guardar cambios':'Dar de alta'}</button>
   ${l?`<button class="btn btn-ghost btn-full btn-sm" style="margin-top:6px;${l.activo!==false?'color:var(--danger)':''}" onclick="crdDesactivarLote('${l.id}',${l.activo===false});closeModal();renderConfig();showToast('${l.activo===false?'Lote activado':'Lote desactivado'}')">${l.activo===false?'Activar lote':'Desactivar lote (carrete terminado)'}</button>`:''}
   <button class="btn btn-ghost btn-full btn-sm" style="margin-top:6px" onclick="closeModal()">Cancelar</button>`);
-  crdLoteAvisoUI();
+  crdLoteAvisoUI();crdLotePesoUI();
+}
+const _crdG=g=>g>=1000?(g/1000).toFixed(2)+' kg':Math.round(g)+' g';
+function _crdPesoTxt(l){
+  const e=crdExistencia(l);if(!e)return '<span style="color:var(--text3)">sin pesar</span>';
+  return l.material==='cobre'&&e.consumo>0?`<b>≈ ${_crdG(e.estimado)}</b><div style="font-size:10px;color:var(--text3)">pesado ${_crdG(e.neto)}</div>`:`<b>${_crdG(e.neto)}</b>`;
+}
+function crdLotePesoUI(){
+  const el=document.getElementById('crd-l-neto');if(!el)return;
+  const b=_crdNum(document.getElementById('crd-l-bruto').value),t=_crdNum(document.getElementById('crd-l-tara').value)||0;
+  el.innerHTML=b>0?(t>=b?'<span style="color:var(--danger)">El vacío no puede pesar más que el total.</span>':`Neto: <b>${_crdG(b-t)}</b>${t?'':' · sin descontar el vacío'}`):'';
 }
 function crdLoteAvisoUI(){
   const el=document.getElementById('crd-l-aviso'),m=document.getElementById('crd-l-marca');if(!el)return;
   el.textContent=m&&m.value==='Mapes'&&!crdPulg(document.getElementById('crd-l-med').value)?'⚠️ Mide el diámetro real: el acero Mapes suele venir corto.':'';
 }
-function crdGuardarLoteUI(material,id){
+function crdGuardarLoteUI(material,id,irA){
   const v=k=>{const e=document.getElementById(k);return e?e.value.trim():'';};
   const med=crdPulg(v('crd-l-med'));
   if(v('crd-l-med')&&!(med>0&&med<.2)){showToast('Diámetro medido inválido');return;}
-  const datos={diamMedido:med||null,proveedor:v('crd-l-prov'),notas:v('crd-l-notas')};
+  const bruto=_crdNum(v('crd-l-bruto')),tara=_crdNum(v('crd-l-tara'));
+  if(v('crd-l-bruto')&&!(bruto>0&&bruto<100000)){showToast('Peso total inválido (gramos)');return;}
+  if(v('crd-l-tara')&&!(tara>=0&&(!bruto||tara<bruto))){showToast('El vacío no puede pesar más que el total');return;}
+  const datos={diamMedido:med||null,proveedor:v('crd-l-prov'),notas:v('crd-l-notas'),pesoBruto:bruto||null,tara:tara||null};
   if(material==='acero'){
     const nom=crdPulg(v('crd-l-nom'));if(!(nom>.02&&nom<.15)){showToast('Escribe el diámetro nominal (.041 o 41)');return;}
     datos.diamNominal=nom;datos.marca=v('crd-l-marca')==='Otra'?(v('crd-l-otra')||'Otra'):v('crd-l-marca');
@@ -2094,9 +2161,17 @@ function crdGuardarLoteUI(material,id){
       else Object.assign(datos,{material:'cobre',sistema:'AWG',calibre:Number(v('crd-l-awg'))});
     }
   }
-  if(id!=null)datos.id=crdGetLote(id).id;
-  const l=crdGuardarLote(datos);
-  closeModal();_crdCfgAbierto=true;renderConfig();showToast(`${l.clave} ${id!=null?'actualizado':'dado de alta'} ✓`);
+  const prev=id!=null?crdGetLote(id):null;
+  // Pesaje nuevo: cambia la fecha desde la que se estima el consumo
+  if(datos.pesoBruto&&(!prev||Number(prev.pesoBruto)!==datos.pesoBruto||(Number(prev.tara)||null)!==datos.tara)){
+    datos.pesadoEn=Date.now();datos.fechaPesaje=new Date().toISOString().split('T')[0];}
+  if(!datos.pesoBruto){datos.pesadoEn=null;datos.fechaPesaje=null;}
+  let l=prev,cambio=!prev;
+  if(prev){datos.id=prev.id;cambio=Object.keys(datos).some(k=>String(prev[k]??'')!==String(datos[k]??''));}
+  if(cambio)l=crdGuardarLote(datos);
+  _crdCfgAbierto=true;
+  if(irA){if(cambio)showToast(`${l.clave} guardado ✓`,1200);crdModalLote(material,irA);return;}
+  closeModal();renderConfig();showToast(`${l.clave} ${!prev?'dado de alta':cambio?'actualizado':'sin cambios'} ✓`);
 }
 crdInit();
 
@@ -2484,7 +2559,7 @@ async function renderInicio(){
         ${perfAvatar}
         <div><div class="page-title">Hola, ${tec.nombre||'Técnico'}</div>
         <div class="page-sub">${new Date().toLocaleDateString('es-MX',{weekday:'long',day:'numeric',month:'long'})}</div>
-        <div style="font-size:10px;color:var(--text3);margin-top:1px;letter-spacing:.3px">PianoTune Pro v3.6.2</div></div>
+        <div style="font-size:10px;color:var(--text3);margin-top:1px;letter-spacing:.3px">PianoTune Pro v3.6.3</div></div>
       </div>
       <button class="btn btn-ghost btn-xs" onclick="navigate('config')">⚙ Config</button>
     </div>
@@ -5132,7 +5207,7 @@ function renderConfig(){
   </div>
   <div class="credits-block">
     <div class="credits-logo">🎹</div>
-    <div class="credits-app">PianoTune Pro v3.6.2</div>
+    <div class="credits-app">PianoTune Pro v3.6.3</div>
     <div class="credits-dev">Desarrollado por Sergio L. Ruiz Jones</div>
     <div class="credits-co">Pianos and Pianos — Mazatlán, Sin.</div>
   </div>`;
