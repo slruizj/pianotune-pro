@@ -305,7 +305,7 @@ body.kawaii .cli-sin-tel{background:#f7c9dc!important}
     ☁️ <span id="dt-sync-txt">Listo</span>
   </div>
   <div style="padding:10px 16px 14px">
-    <div style="color:rgba(255,255,255,.35);font-size:10px;font-weight:600;letter-spacing:.4px">PianoTune Pro v3.8.1</div>
+    <div style="color:rgba(255,255,255,.35);font-size:10px;font-weight:600;letter-spacing:.4px">PianoTune Pro v3.8.2</div>
   </div>
 </div>
 
@@ -1187,6 +1187,8 @@ if(!state.deleted)state.deleted=[];
    la lista persistente _pend (ptp_pend); la primera fusión con la nube detecta además lo local
    más nuevo que la nube (rescata ediciones que la v3.7.0 dejó sin subir). */
 _snapshotAll();
+// v3.8.2 — claves de acero con formato .030 y acordes a marca/diámetro (determinista: da lo mismo en todos los dispositivos)
+try{if(crdNormalizarClaves())saveState();}catch(e){console.warn('crdNormalizarClaves',e);}
 // v3.8.0 — un punto de partida capturado en v3.7.1 (sin sello) se comparte con los demás dispositivos
 if(state.kmBase&&typeof state.kmBase.lat==='number'&&!state.kmBase.ts&&!state.kmBase.aprox){state.kmBase.ts=1;_markPend('_meta','kmBase');_savePend();}
 function nextId(){state.nextId=(state.nextId||0)+1;return Date.now()*1000+Math.floor(Math.random()*1000);}
@@ -1244,19 +1246,58 @@ function crdAvisoLote(l){
     return 'Mide el diámetro real: el acero Mapes suele venir corto.';
   return '';
 }
+// v3.8.2 — Calibre de piano (music wire gauge, tabla Roslau/Schaff) por diámetro nominal en milésimas
+const CRD_GAUGE={6:'4/0',7:'3/0',8:'2/0',9:'0',10:'1',11:'2',12:'3',13:'4',14:'5',16:'6',18:'7',20:'8',22:'9',24:'10',26:'11',51:'23',55:'24',59:'25',63:'26',67:'27',75:'29',85:'31'};
+for(let m=29;m<=49;m++)CRD_GAUGE[m]=String(12+(m-29)/2);
+function crdGauge(d){const m=Math.round((Number(d)||0)*1000);if(Math.abs((Number(d)||0)*1000-m)>0.15)return '';return CRD_GAUGE[m]||'';}
+// Diámetro en texto: .030 (3 decimales; 4 solo si hace falta, ej. .0305)
+function crdDiamTxt(d){const n=Number(d);if(!(n>0))return '';let t=n.toFixed(4);if(t.endsWith('0'))t=n.toFixed(3);return t.replace(/^0/,'');}
+function _crdBaseClave(l){return l.material==='acero'?((l.marca||'Acero')+'-'+crdDiamTxt(l.diamNominal)):crdCalLabel(l);}
+// Clave con calibre para mostrar: Roslau-.030-1 - 12.5 Ga.
+function crdClaveGa(l){if(!l)return '';const g=l.material==='acero'?crdGauge(l.diamNominal):'';return (l.clave||'')+(g?' - '+g+' Ga.':'');}
+// Corrige claves de acero: formato .030 y que coincidan con la marca y el diámetro actuales (se conserva el número de lote si cuadra)
+function crdNormalizarClaves(){
+  const ac=(state.lotesAlambre||[]).filter(l=>l&&l.material==='acero').sort((a,b)=>String(a.fechaAlta||'').localeCompare(String(b.fechaAlta||''))||String(a.id).localeCompare(String(b.id)));
+  const parse=c=>{const m=String(c||'').match(/^(.*)-(\.?\d*\.?\d+)-(\d+)$/);return m?{marca:m[1],d:parseFloat(m[2].startsWith('.')?'0'+m[2]:m[2]),n:+m[3]}:null;};
+  const usados={};const pend=[];let cambio=false;
+  ac.forEach(l=>{const base=_crdBaseClave(l),p=parse(l.clave);
+    if(p&&p.marca===(l.marca||'Acero')&&Math.abs(p.d-Number(l.diamNominal))<1e-6&&!(usados[base]||{})[p.n]){(usados[base]=usados[base]||{})[p.n]=1;const nc=base+'-'+p.n;if(nc!==l.clave){l.clave=nc;cambio=true;}}
+    else pend.push(l);});
+  pend.forEach(l=>{const base=_crdBaseClave(l);const u=usados[base]=usados[base]||{};let n=1;while(u[n])n++;u[n]=1;const nc=base+'-'+n;if(nc!==l.clave){l.clave=nc;cambio=true;}});
+  return cambio;
+}
+// ¿Alguna cuerda o combinación usa este lote? (entonces no se puede borrar, solo dar de baja)
+function crdLoteUsado(id){
+  const sid=String(id);
+  const busca=o=>{if(!o||typeof o!=='object')return false;if(Array.isArray(o))return o.some(busca);
+    return Object.keys(o).some(k=>(/lote/i.test(k)&&o[k]!=null&&typeof o[k]!=='object'&&String(o[k])===sid)||busca(o[k]));};
+  return busca(state.ordenesCuerdas||[])||busca(state.combinacionesCobre||[]);
+}
+function crdEliminarLote(id){
+  const l=crdGetLote(id);if(!l)return;
+  if(crdLoteUsado(id)){showToast('Este lote ya se usó en cuerdas: se queda dado de baja como historial',4000);return;}
+  if(!confirm(`¿Eliminar el lote ${l.clave}? No se puede deshacer.`))return;
+  tombstone('lotesAlambre',l.id);state.lotesAlambre=state.lotesAlambre.filter(x=>x!==l);saveState();
+  closeModal();_crdCfgAbierto=true;renderConfig();showToast('Lote eliminado');
+}
+const CRD_MIN_G=100; // menos de esto: rosa (hay que comprar)
+let _crdVerBaja=true;
 function crdGuardarLote(datos){
   const now=Date.now();
   if(datos.id!=null){
     const l=crdGetLote(datos.id);if(!l)return null;
-    Object.assign(l,datos,{updatedAt:now});saveState();return l;
+    Object.assign(l,datos,{updatedAt:now});
+    if(l.material==='acero')crdNormalizarClaves(); // v3.8.2 — la clave sigue a la marca y el diámetro
+    saveState();return l;
   }
   const l=Object.assign({id:nextId(),material:'cobre',clave:'',sistema:'AWG',calibre:null,marca:'',diamNominal:null,diamMedido:null,
     proveedor:'',fechaAlta:_hoyISO(),activo:true,notas:''},datos);
   if(l.sistema==='AWG'&&l.diamNominal==null&&CRD_AWG[l.calibre])l.diamNominal=CRD_AWG[l.calibre];
   if(l.sistema==='mm'&&l.diamNominal==null&&_crdNum(l.calibre))l.diamNominal=+(Number(l.calibre)/CRD_IN).toFixed(5);
   if(!l.clave){
-    const base=l.material==='acero'?((l.marca||'Acero')+'-'+(l.diamNominal!=null?String(l.diamNominal).replace(/^0/,''):'')):crdCalLabel(l);
-    const n=(state.lotesAlambre||[]).filter(x=>x.clave&&x.clave.indexOf(base+'-')===0).length+1;
+    const base=_crdBaseClave(l); // v3.8.2 — formato .030
+    const usados=new Set((state.lotesAlambre||[]).filter(x=>x.clave&&x.clave.indexOf(base+'-')===0).map(x=>+x.clave.slice(base.length+1)));
+    let n=1;while(usados.has(n))n++;
     l.clave=base+'-'+n;
   }
   state.lotesAlambre.push(l);saveState();return l;
@@ -2218,8 +2259,11 @@ let _crdCfgAbierto=false;
 function crdConfigHTML(){
   const cfg=crdCfg();
   const fila=l=>{const av=crdAvisoLote(l),act=l.activo!==false;
-    return `<div class="settings-row" style="cursor:pointer;padding:10px 16px;${act?'':'opacity:.45'}" onclick="crdModalLote('${l.material}','${l.id}')">
-      <div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:600">${_crdEsc(l.clave)}${act?'':' · inactivo'}</div>
+    if(!act&&!_crdVerBaja)return '';
+    const ex=crdExistencia(l),bajo=act&&l.material==='acero'&&ex&&ex.neto<CRD_MIN_G; // v3.8.2 — rosa: menos de 100 g
+    const fondo=!act?'background:#ececef;color:var(--text3)':bajo?'background:#fde4ee':'';
+    return `<div class="settings-row" style="cursor:pointer;padding:10px 16px;${fondo}" onclick="crdModalLote('${l.material}','${l.id}')">
+      <div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:600;${act?'':'color:var(--text3)'}">${_crdEsc(crdClaveGa(l))}${act?'':' · <span style="font-weight:500">dado de baja</span>'}${bajo?' <span style="font-size:11px;color:#c2185b;font-weight:600">· queda poco</span>':''}</div>
       <div style="font-size:11px;color:var(--text2)">${_crdIn4(l.diamNominal)}${Number(l.diamMedido)?` · real <b>${_crdIn4(l.diamMedido)}</b>`:''}${l.marca?' · '+_crdEsc(l.marca):''}${l.proveedor?' · '+_crdEsc(l.proveedor):''}</div>
       ${av?`<div style="font-size:11px;color:var(--warning);font-weight:600">⚠️ ${av}</div>`:''}</div>
       <div style="text-align:right;font-size:12px;flex-shrink:0;margin-right:6px">${_crdPesoTxt(l)}</div>
@@ -2230,9 +2274,15 @@ function crdConfigHTML(){
   <summary style="padding:12px 16px;font-weight:700;font-size:14px;cursor:pointer;list-style:none;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;background:var(--bg)">
     🎼 Alambre para cuerdas <span style="font-size:12px;color:var(--text3)">${acero.filter(l=>l.activo!==false).length} acero · ${cobre.filter(l=>l.activo!==false).length} cobre</span>
   </summary>
-  <div style="padding:8px 16px;font-size:12px;color:var(--text2)">Cada lote es un carrete o rollo. La app solo sugiere calibres con al menos un lote activo. Los lotes no se borran: se desactivan.</div>
+  <div style="padding:8px 16px;font-size:12px;color:var(--text2)">Cada lote es un carrete o rollo. La app solo sugiere calibres con al menos un lote activo. Un carrete terminado se da de baja (queda en gris como historial); si nunca se usó en una cuerda, también se puede eliminar.</div>
   <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 16px"><b style="font-size:13px">Acero (núcleos)</b>
     <button class="btn btn-ghost btn-xs" onclick="crdModalLote('acero')">+ Carrete de acero</button></div>
+  ${(()=>{ // v3.8.2 — por comprar: diámetros cuyo acero activo pesado suma menos de 100 g
+    const tot={};acero.filter(l=>l.activo!==false).forEach(l=>{const k=crdDiamTxt(l.diamNominal);const e=crdExistencia(l);if(!tot[k])tot[k]={g:0,pes:false,d:Number(l.diamNominal)};if(e){tot[k].g+=e.neto;tot[k].pes=true;}});
+    const faltan=Object.keys(tot).filter(k=>tot[k].pes&&tot[k].g<CRD_MIN_G).sort((a,b)=>tot[a].d-tot[b].d);
+    const nBaja=acero.filter(l=>l.activo===false).length;
+    return `<div style="padding:0 16px 8px;font-size:12px;line-height:1.5">${faltan.length?`<div style="background:#fde4ee;border-radius:8px;padding:8px 10px;margin-bottom:6px">🛒 <b>Por comprar</b> (menos de ${CRD_MIN_G} g en total): ${faltan.map(k=>`<b>${k}</b>${crdGauge(tot[k].d)?' ('+crdGauge(tot[k].d)+' Ga.)':''} · ${_crdG(tot[k].g)}`).join(' · ')}</div>`:''}
+      <span style="color:var(--text2)">Rosa: carrete con menos de ${CRD_MIN_G} g · Gris: dado de baja.</span>${nBaja?` <a href="#" onclick="event.preventDefault();_crdVerBaja=!_crdVerBaja;_crdCfgAbierto=true;renderConfig()">${_crdVerBaja?'Ocultar':'Mostrar'} dados de baja (${nBaja})</a>`:''}</div>`;})()}
   ${acero.map(fila).join('')||'<div style="padding:8px 16px;font-size:12px;color:var(--warning)">Sin acero dado de alta: las fichas dirán "sin lote".</div>'}
   <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px 6px"><b style="font-size:13px">Cobre</b>
     <button class="btn btn-ghost btn-xs" onclick="crdModalLote('cobre')">+ Carrete de cobre</button></div>
@@ -2261,7 +2311,7 @@ function crdModalLote(material,id){
   const marcaSel=l?l.marca:'Roslau',otra=ac&&l&&l.marca&&!CRD_MARCAS_ACERO.includes(l.marca);
   const lista=l?crdLotesTodos(material):[],ix=l?lista.findIndex(x=>String(x.id)===String(l.id)):-1,ant=lista[ix-1],sig=lista[ix+1];
   const ex=l?crdExistencia(l):null;
-  openModal(`<div class="modal-title">${l?'Lote '+_crdEsc(l.clave):ac?'+ Carrete de acero':'+ Carrete de cobre'}</div>
+  openModal(`<div class="modal-title">${l?'Lote '+_crdEsc(crdClaveGa(l)):ac?'+ Carrete de acero':'+ Carrete de cobre'}</div>
   ${l?`<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:-4px 0 12px">
     <button class="btn btn-ghost btn-sm" ${ant?`onclick="crdGuardarLoteUI('${material}','${l.id}','${ant.id}')"`:'disabled style="opacity:.35"'}>← ${ant?_crdEsc(ant.clave):''}</button>
     <button class="btn btn-ghost btn-sm" ${sig?`onclick="crdGuardarLoteUI('${material}','${l.id}','${sig.id}')"`:'disabled style="opacity:.35"'}>${sig?_crdEsc(sig.clave):''} →</button></div>
@@ -2296,7 +2346,8 @@ function crdModalLote(material,id){
   <div class="input-group"><label class="input-label">Proveedor</label><input class="input" id="crd-l-prov" value="${_crdEsc(l&&l.proveedor||'')}" placeholder="Opcional"></div>
   <div class="input-group"><label class="input-label">Notas</label><input class="input" id="crd-l-notas" value="${_crdEsc(l&&l.notas||'')}" placeholder="Opcional"></div>
   <button class="btn btn-primary btn-full" onclick="crdGuardarLoteUI('${material}',${l?`'${l.id}'`:'null'})">${l?'Guardar cambios':'Dar de alta'}</button>
-  ${l?`<button class="btn btn-ghost btn-full btn-sm" style="margin-top:6px;${l.activo!==false?'color:var(--danger)':''}" onclick="crdDesactivarLote('${l.id}',${l.activo===false});closeModal();renderConfig();showToast('${l.activo===false?'Lote activado':'Lote desactivado'}')">${l.activo===false?'Activar lote':'Desactivar lote (carrete terminado)'}</button>`:''}
+  ${l?`<button class="btn btn-ghost btn-full btn-sm" style="margin-top:6px;${l.activo!==false?'color:var(--danger)':''}" onclick="crdDesactivarLote('${l.id}',${l.activo===false});closeModal();_crdCfgAbierto=true;renderConfig();showToast('${l.activo===false?'Lote reactivado':'Lote dado de baja'}')">${l.activo===false?'Reactivar lote':'Dar de baja (carrete terminado)'}</button>
+  ${l.activo===false?(crdLoteUsado(l.id)?'<div style="font-size:11px;color:var(--text3);text-align:center;margin-top:6px">Se usó en cuerdas: se conserva como historial.</div>':`<button class="btn btn-ghost btn-full btn-sm" style="margin-top:6px;color:var(--danger)" onclick="crdEliminarLote('${l.id}')">🗑 Eliminar lote</button>`):''}`:''}
   <button class="btn btn-ghost btn-full btn-sm" style="margin-top:6px" onclick="closeModal()">Cancelar</button>`);
   crdLoteAvisoUI();crdLotePesoUI();
 }
@@ -2885,7 +2936,7 @@ async function renderInicio(){
         ${perfAvatar}
         <div><div class="page-title">Hola, ${tec.nombre||'Técnico'}</div>
         <div class="page-sub">${new Date().toLocaleDateString('es-MX',{weekday:'long',day:'numeric',month:'long'})}</div>
-        <div style="font-size:10px;color:var(--text3);margin-top:1px;letter-spacing:.3px">PianoTune Pro v3.8.1</div></div>
+        <div style="font-size:10px;color:var(--text3);margin-top:1px;letter-spacing:.3px">PianoTune Pro v3.8.2</div></div>
       </div>
       <button class="btn btn-ghost btn-xs" onclick="navigate('config')">⚙ Config</button>
     </div>
@@ -3476,6 +3527,304 @@ function renderContactar(){
   :prospHtml}`;
 }
 
+// ══ IMPORTACIÓN MASIVA DE CONTACTOS — v3.8.2 · Diseño: claude/DISENO_SEGUIMIENTO.md §6 ══════════
+// Fuentes: CSV de Google Contacts (formato nuevo y viejo), vCard (.vcf) de Android, selector de contactos
+// del teléfono (varios) y la "hoja de fechas" que la app genera para llenar en la PC.
+function _impNorm(s){return String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/\b(sr|sra|srita|dr|dra|lic|ing|mtro|mtra|prof)\.?\s+/g,'').replace(/[^a-z0-9ñ ]/g,' ').replace(/\s+/g,' ').trim();}
+// Teléfono → 10 dígitos para México (quita +52 / 521); extranjeros quedan con +
+function _impTel(t){
+  const raw=String(t||'').split(/:::|,|;|\//)[0].trim();if(!raw)return '';
+  let d=raw.replace(/\D/g,'');if(!d)return '';
+  if(d.length===13&&d.startsWith('521'))d=d.slice(3);
+  else if(d.length===12&&d.startsWith('52'))d=d.slice(2);
+  else if(d.length===11&&d.startsWith('1')&&!raw.startsWith('+'))d=d.slice(1);
+  if(d.length===10)return d;
+  return raw.startsWith('+')?'+'+d:d;
+}
+function _impTel10(t){const d=_telDigitos(t);return d.length>=10?d.slice(-10):d;}
+// Lector de archivos: UTF-8 y, si sale con caracteres rotos, Windows-1252 (CSV guardado desde Excel)
+function _impLeerArchivo(file){
+  return file.arrayBuffer().then(buf=>{
+    let t=new TextDecoder('utf-8').decode(buf);
+    if(t.includes('�')){try{t=new TextDecoder('windows-1252').decode(buf);}catch(e){}}
+    return t.replace(/^﻿/,'');
+  });
+}
+// CSV con comillas, saltos de línea dentro de campos y separador , o ;
+function _impCSV(txt){
+  const first=txt.split(/\r?\n/)[0]||'';
+  const sep=(first.split(';').length>first.split(',').length)?';':',';
+  const rows=[];let row=[],f='',q=false;
+  for(let i=0;i<txt.length;i++){
+    const ch=txt[i];
+    if(q){if(ch==='"'){if(txt[i+1]==='"'){f+='"';i++;}else q=false;}else f+=ch;}
+    else if(ch==='"')q=true;
+    else if(ch===sep){row.push(f);f='';}
+    else if(ch==='\n'||ch==='\r'){if(ch==='\r'&&txt[i+1]==='\n')i++;row.push(f);rows.push(row);row=[];f='';}
+    else f+=ch;
+  }
+  if(f!==''||row.length){row.push(f);rows.push(row);}
+  return rows.filter(r=>r.some(x=>String(x).trim()!==''));
+}
+// CSV de Google Contacts → [{nombre,telefono,email,direccion,notas,etiquetas[]}]
+function _impDeGoogleCSV(rows){
+  const h=rows[0].map(x=>String(x).trim());const ix=n=>h.findIndex(x=>x.toLowerCase()===n.toLowerCase());
+  const get=(r,n)=>{const i=typeof n==='number'?n:ix(n);return i>=0?String(r[i]||'').trim():'';};
+  const telCols=h.map((x,i)=>/^phone \d+ - value$/i.test(x)?i:-1).filter(i=>i>=0);
+  const out=[];
+  rows.slice(1).forEach(r=>{
+    let nombre=get(r,'Name')||[get(r,'First Name'),get(r,'Middle Name'),get(r,'Last Name')].filter(Boolean).join(' ')||[get(r,'Given Name'),get(r,'Additional Name'),get(r,'Family Name')].filter(Boolean).join(' ')||get(r,'File As')||get(r,'Nickname')||get(r,'Organization Name')||get(r,'Organization 1 - Name');
+    nombre=nombre.replace(/\s+/g,' ').trim();
+    // Teléfono: el primero marcado como móvil; si no, el primero que haya
+    let tel='',telMovil='';
+    telCols.forEach(i=>{const v=get(r,i);if(!v)return;const tipo=(get(r,i-1)||'').toLowerCase();const t=_impTel(v);if(!t)return;
+      if(!tel)tel=t;if(!telMovil&&/mobile|m[oó]vil|cel/.test(tipo))telMovil=t;});
+    const etq=(get(r,'Labels')||get(r,'Group Membership')).split(':::').map(x=>x.replace(/^\*\s*/,'').trim()).filter(x=>x&&!/^(mycontacts|starred)$/i.test(x));
+    if(!nombre&&!tel)return;
+    out.push({nombre:nombre||'(sin nombre)',telefono:telMovil||tel,email:get(r,'E-mail 1 - Value').split(':::')[0].trim(),
+      direccion:get(r,'Address 1 - Formatted').replace(/\s*\n\s*/g,', '),notas:get(r,'Notes'),etiquetas:etq});
+  });
+  return out;
+}
+// vCard (.vcf) exportado del teléfono
+function _impDeVCF(txt){
+  const lines=txt.replace(/\r\n[ \t]/g,'').replace(/=\r?\n/g,'').split(/\r?\n/);
+  const out=[];let c=null;
+  const qp=s=>{try{return decodeURIComponent(s.replace(/=([0-9A-F]{2})/gi,'%$1'));}catch(e){return s;}};
+  lines.forEach(L=>{
+    if(/^BEGIN:VCARD/i.test(L)){c={nombre:'',telefono:'',telMovil:'',email:'',direccion:'',notas:'',etiquetas:[]};return;}
+    if(/^END:VCARD/i.test(L)){if(c&&(c.nombre||c.telefono||c.telMovil))out.push({...c,telefono:c.telMovil||c.telefono,nombre:c.nombre||'(sin nombre)'});c=null;return;}
+    if(!c)return;
+    const k=L.indexOf(':');if(k<0)return;
+    const key=L.slice(0,k),val0=L.slice(k+1);const val=/QUOTED-PRINTABLE/i.test(key)?qp(val0):val0;
+    const name=key.split(';')[0].toUpperCase().replace(/^ITEM\d+\./,'');
+    const un=v=>v.replace(/\\,/g,',').replace(/\\;/g,';').replace(/\\n/gi,' ').trim();
+    if(name==='FN')c.nombre=un(val);
+    else if(name==='N'&&!c.nombre){const p=val.split(';');c.nombre=un([p[3],p[1],p[2],p[0]].filter(Boolean).join(' '));}
+    else if(name==='TEL'){const t=_impTel(val);if(t){if(!c.telefono)c.telefono=t;if(!c.telMovil&&/CELL|MOBILE/i.test(key))c.telMovil=t;}}
+    else if(name==='EMAIL'&&!c.email)c.email=un(val);
+    else if(name==='NOTE')c.notas=un(val);
+    else if(name==='ADR'&&!c.direccion)c.direccion=un(val.split(';').filter(Boolean).join(', '));
+    else if(name==='CATEGORIES')c.etiquetas=val.split(',').map(un).filter(x=>x&&!/^(mycontacts|starred)$/i.test(x));
+  });
+  return out;
+}
+// Busca si ya existe en la app (últimos 10 dígitos del teléfono o nombre normalizado)
+function _impDuplicado(r,idx){
+  const t=_impTel10(r.telefono);
+  if(t&&t.length===10&&idx.tel[t])return idx.tel[t];
+  const n=_impNorm(r.nombre);
+  return n&&idx.nom[n]?idx.nom[n]:null;
+}
+function _impIndice(){
+  const idx={tel:{},nom:{}};
+  state.clientes.forEach(c=>{const t=_impTel10(c.telefono);if(t&&t.length===10)idx.tel[t]=c;const n=_impNorm(c.nombre);if(n)idx.nom[n]=c;});
+  return idx;
+}
+
+// ── Ventana de inicio ──
+function impModalInicio(){
+  const picker=('contacts' in navigator)&&navigator.contacts&&typeof navigator.contacts.select==='function';
+  openModal(`<div class="modal-title">📥 Importar clientes</div>
+  <p style="font-size:13px;color:var(--text2);margin:-4px 0 12px">Los importados entran como clientes sin fecha de afinación: aparecen en Seguimiento → Sin fecha. Antes de guardar verás una vista previa con los que ya existen.</p>
+  <label class="card" style="display:block;margin:0 0 10px;border:1.5px solid var(--border);cursor:pointer">
+    <div style="font-weight:700;font-size:15px">📄 Archivo de contactos</div>
+    <div style="font-size:12px;color:var(--text2);margin-top:2px">CSV de Google Contacts (recomendado, con etiqueta) o .vcf exportado del teléfono</div>
+    <input type="file" accept=".csv,.vcf,text/csv,text/vcard,text/x-vcard" style="display:none" onchange="impLeerContactos(this)"></label>
+  ${picker?`<button class="card" style="width:100%;margin:0 0 10px;text-align:left;border:1.5px solid var(--border);cursor:pointer" onclick="impDesdeTelefono()">
+    <div style="font-weight:700;font-size:15px">📱 Elegir varios del teléfono</div>
+    <div style="font-size:12px;color:var(--text2);margin-top:2px">Para casos sueltos: marca varios contactos a la vez</div></button>`:''}
+  <div class="modal-sub">Hoja de fechas de última afinación</div>
+  <p style="font-size:12px;color:var(--text2);margin:0 0 8px">Descarga la lista, llénala en la PC (Excel o Google Sheets) y vuelve a subirla aquí.</p>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+    <button class="btn btn-ghost btn-sm" onclick="impDescargarHoja(false)">⬇️ Solo sin fecha</button>
+    <button class="btn btn-ghost btn-sm" onclick="impDescargarHoja(true)">⬇️ Todos</button>
+  </div>
+  <label class="btn btn-outline btn-full btn-sm" style="cursor:pointer">⬆️ Subir hoja llena<input type="file" accept=".csv,text/csv" style="display:none" onchange="impLeerHoja(this)"></label>
+  <div style="font-size:11px;color:var(--text3);margin-top:10px;text-align:center">Paso a paso en el <a href="#" onclick="event.preventDefault();window.open('manual.html#importar','_blank')">Manual → Importar clientes</a></div>`);
+}
+function impLeerContactos(inp){
+  const f=inp.files&&inp.files[0];if(!f)return;
+  _impLeerArchivo(f).then(txt=>{
+    let filas=[];
+    if(/BEGIN:VCARD/i.test(txt))filas=_impDeVCF(txt);
+    else{const rows=_impCSV(txt);if(!rows.length){showToast('El archivo está vacío');return;}
+      const h=rows[0].map(x=>String(x).trim().toLowerCase());
+      if(h.some(x=>/^id\b/.test(x))&&h.some(x=>/afinaci/.test(x))){showToast('Esta es la hoja de fechas: súbela con "Subir hoja llena"',4500);return;}
+      if(h.includes('name')||h.includes('first name')||h.includes('given name')||h.some(x=>/^phone 1/.test(x)))filas=_impDeGoogleCSV(rows);
+      else{ // CSV sencillo: Nombre, Teléfono, Email, Notas
+        const ix=re=>h.findIndex(x=>re.test(x));const iN=ix(/nombre|name/),iT=ix(/tel|phone|cel/),iE=ix(/mail/),iNo=ix(/nota|note/);
+        filas=rows.slice(1).map(r=>({nombre:String(r[iN>=0?iN:0]||'').trim(),telefono:_impTel(r[iT]),email:iE>=0?String(r[iE]||'').trim():'',direccion:'',notas:iNo>=0?String(r[iNo]||'').trim():'',etiquetas:[]})).filter(r=>r.nombre||r.telefono);
+      }}
+    if(!filas.length){showToast('No se encontraron contactos en el archivo',4000);return;}
+    impVistaPrevia(filas,/BEGIN:VCARD/i.test(txt)?'vcf':'csv');
+  }).catch(e=>{console.warn(e);showToast('No se pudo leer el archivo',4000);});
+}
+async function impDesdeTelefono(){
+  try{
+    const sel=await navigator.contacts.select(['name','tel','email'],{multiple:true});
+    if(!sel||!sel.length)return;
+    impVistaPrevia(sel.map(c=>({nombre:(c.name&&c.name[0]||'').trim()||'(sin nombre)',telefono:_impTel((c.tel||[])[0]),email:(c.email||[])[0]||'',direccion:'',notas:'',etiquetas:[]})),'contactos');
+  }catch(e){showToast('No se pudo abrir los contactos del teléfono',4000);}
+}
+
+// ── Vista previa con duplicados ──
+let _imp=null;
+function impVistaPrevia(filas,origen){
+  const idx=_impIndice();const vistos={};
+  const items=filas.map((r,i)=>{
+    const dup=_impDuplicado(r,idx);
+    // repetido dentro del mismo archivo
+    const key=_impTel10(r.telefono)||_impNorm(r.nombre);const rep=key&&vistos[key];if(key&&!rep)vistos[key]=1;
+    const completa=!!(dup&&((!_telDigitos(dup.telefono)&&r.telefono)||(!dup.email&&r.email)));
+    return {i,r,dup,rep:!!rep,sel:!dup&&!rep,puede:completa,completa:completa};
+  });
+  const etq={};items.forEach(it=>it.r.etiquetas.forEach(e=>etq[e]=(etq[e]||0)+1));
+  _imp={items,origen,etiqueta:'',buscar:'',etiquetas:Object.keys(etq).sort().map(e=>({e,n:etq[e]})),categoria:'local'};
+  impRenderPrevia();
+}
+function _impVisibles(){const q=_impNorm(_imp.buscar);return _imp.items.filter(it=>(!_imp.etiqueta||it.r.etiquetas.includes(_imp.etiqueta))&&(!q||_impNorm(it.r.nombre).includes(q)||_telDigitos(it.r.telefono).includes(q.replace(/\D/g,'')||'§')));}
+function impRenderPrevia(){
+  if(!_imp)return;
+  const vis=_impVisibles();
+  const nNuevos=_imp.items.filter(it=>it.sel&&(!_imp.etiqueta||it.r.etiquetas.includes(_imp.etiqueta))).length;
+  const nComp=_imp.items.filter(it=>it.dup&&it.completa&&(!_imp.etiqueta||it.r.etiquetas.includes(_imp.etiqueta))).length;
+  const nDup=vis.filter(it=>it.dup).length,nSin=vis.filter(it=>!it.dup&&!it.rep&&!_telDigitos(it.r.telefono)).length;
+  const filas=vis.slice(0,600).map(it=>{
+    const r=it.r;const sinTel=!_telDigitos(r.telefono);
+    let estado,ctrl;
+    if(it.dup){estado=`<span style="color:var(--text2)">Ya existe: <b>${_esc(it.dup.nombre)}</b>${it.puede?' · le falta '+(!_telDigitos(it.dup.telefono)&&r.telefono?'teléfono':'email'):''}</span>`;
+      ctrl=it.puede?`<input type="checkbox" ${it.completa?'checked':''} onchange="_imp.items[${it.i}].completa=this.checked;impRenderPrevia()" title="Completar datos">`:'<span style="font-size:16px">✓</span>';}
+    else if(it.rep){estado='<span style="color:var(--text3)">Repetido en el archivo</span>';ctrl='';}
+    else{estado=sinTel?'<span style="color:#c2185b">Nuevo · sin teléfono</span>':'<span style="color:var(--success)">Nuevo</span>';
+      ctrl=`<input type="checkbox" ${it.sel?'checked':''} onchange="_imp.items[${it.i}].sel=this.checked;impRenderPrevia()">`;}
+    return `<label style="display:flex;gap:10px;align-items:center;padding:8px 6px;border-bottom:1px solid var(--border);${sinTel&&!it.dup?'background:#fde4ee;':''}${it.dup||it.rep?'opacity:.75':''}">
+      <span style="width:22px;text-align:center">${ctrl}</span>
+      <span style="flex:1;min-width:0"><span style="font-size:14px;font-weight:600">${_esc(r.nombre)}</span><br>
+      <span style="font-size:12px;color:var(--text2)">${r.telefono?_esc(r.telefono):'—'}${r.etiquetas.length?' · '+_esc(r.etiquetas.join(', ')):''}</span><br>
+      <span style="font-size:11px">${estado}</span></span></label>`;}).join('');
+  openModal(`<div class="modal-title">📥 Vista previa · ${_imp.items.length} contactos</div>
+  ${_imp.etiquetas.length?`<div class="input-group"><label class="input-label">Etiqueta</label><select class="input select" onchange="_imp.etiqueta=this.value;impRenderPrevia()">
+    <option value="">Todas las etiquetas</option>${_imp.etiquetas.map(x=>`<option value="${_esc(x.e)}" ${_imp.etiqueta===x.e?'selected':''}>${_esc(x.e)} (${x.n})</option>`).join('')}</select></div>`:''}
+  <div style="font-size:12px;color:var(--text2);margin-bottom:8px"><b style="color:var(--success)">${nNuevos} nuevos marcados</b> · ${nDup} ya existen${nComp?` (${nComp} se completan)`:''} · <span style="color:#c2185b">${nSin} sin teléfono</span></div>
+  <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap">
+    <input class="input" style="flex:1;min-width:150px;padding:8px 10px;font-size:14px" placeholder="Buscar…" value="${_esc(_imp.buscar)}" onchange="_imp.buscar=this.value;impRenderPrevia()">
+    <button class="btn btn-ghost btn-xs" onclick="impMarcar(true)">Marcar visibles</button>
+    <button class="btn btn-ghost btn-xs" onclick="impMarcar(false)">Desmarcar</button>
+  </div>
+  <div style="max-height:46vh;overflow:auto;border:1px solid var(--border);border-radius:10px;margin-bottom:10px">${filas||'<div style="padding:16px;text-align:center;color:var(--text3)">Sin contactos con ese filtro</div>'}${vis.length>600?'<div style="padding:8px;font-size:12px;color:var(--text3)">Se muestran 600; usa el buscador o la etiqueta.</div>':''}</div>
+  ${_catSelect('imp-cat',_imp.categoria,"_imp.categoria=this.value")}
+  <button class="btn btn-primary btn-full" onclick="impConfirmar()" ${nNuevos||nComp?'':'disabled style="opacity:.5"'}>Importar ${nNuevos} cliente${nNuevos===1?'':'s'}${nComp?` y completar ${nComp}`:''}</button>
+  <button class="btn btn-ghost btn-full" style="margin-top:8px" onclick="closeModal();_imp=null">Cancelar</button>`);
+}
+function impMarcar(v){_impVisibles().forEach(it=>{if(!it.dup&&!it.rep)it.sel=v;});impRenderPrevia();}
+function impConfirmar(){
+  if(!_imp)return;
+  const enEtq=it=>!_imp.etiqueta||it.r.etiquetas.includes(_imp.etiqueta);
+  const nuevos=_imp.items.filter(it=>it.sel&&!it.dup&&!it.rep&&enEtq(it));
+  const comp=_imp.items.filter(it=>it.dup&&it.completa&&enEtq(it));
+  const origen=_imp.origen==='contactos'?'contactos':'csv';
+  nuevos.forEach(it=>{const r=it.r;
+    const c={id:nextId(),nombre:r.nombre,telefono:r.telefono||'',email:r.email||'',direccion:r.direccion||'',notas:r.notas||'',
+      rfc:'',razonSocial:'',cp:'',tipoCliente:'particular',lat:null,lon:null,pianos:[],origen,importadoEl:_hoyISO()};
+    if(_imp.categoria==='foraneo')c.categoria='foraneo';
+    state.clientes.push(c);});
+  comp.forEach(it=>{const c=it.dup,r=it.r;if(!_telDigitos(c.telefono)&&r.telefono)c.telefono=r.telefono;if(!c.email&&r.email)c.email=r.email;});
+  saveState();closeModal();_imp=null;
+  showToast(`✓ ${nuevos.length} importados${comp.length?' · '+comp.length+' completados':''}`,4000);
+  if(currentScreen==='clientes')renderClientes();
+  if(nuevos.length&&confirm(`Se importaron ${nuevos.length} clientes. ¿Ir a Seguimiento → Sin fecha para capturar su última afinación?`)){segFiltro='sinfecha';navigate('contactar');}
+}
+
+// ── Hoja de fechas: descargar y volver a subir ──
+function _csvCampo(v){v=String(v==null?'':v);return /[",\n\r;]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;}
+function impDescargarHoja(todos){
+  const filas=[['ID (no modificar)','Cliente','Teléfono','Piano (marca y modelo)','Última afinación (DD/MM/AA o MM/AA)','Notas']];
+  state.clientes.filter(c=>!esForaneo(c)).sort((a,b)=>a.nombre.localeCompare(b.nombre,'es')).forEach(c=>{
+    const ps=(c.pianos||[]);
+    if(!ps.length){filas.push(['C'+c.id,c.nombre,c.telefono||'','','',c.notas||'']);return;}
+    ps.forEach(p=>{const u=segUltimaAfin(c,p);if(!todos&&u)return;
+      const f=u?(u.aprox?u.fecha.slice(5,7)+'/'+u.fecha.slice(2,4):fmtDate(u.fecha)):'';
+      filas.push(['C'+c.id+'.P'+p.id,c.nombre,c.telefono||'',[p.marca==='Por definir'?'':p.marca,p.modelo].filter(Boolean).join(' '),f,c.notas||'']);});
+  });
+  if(filas.length===1){showToast('Todos los clientes ya tienen fecha 🎉');return;}
+  const csv='﻿'+filas.map(r=>r.map(_csvCampo).join(',')).join('\r\n');
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+  a.download=`hoja_fechas_afinacion_${_hoyISO()}.csv`;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},500);
+  showToast(`Hoja descargada · ${filas.length-1} renglones`,3500);
+}
+// Fecha flexible → {iso,aprox} · null si vacío · false si no se entiende o es futura
+const _IMP_MES={ene:1,feb:2,mar:3,abr:4,may:5,jun:6,jul:7,ago:8,sep:9,set:9,oct:10,nov:11,dic:12,jan:1,apr:4,aug:8,dec:12};
+function impParseFecha(s){
+  s=String(s||'').trim().toLowerCase().replace(/\s+de\s+/g,' ');if(!s)return null;
+  const yy=y=>{y=+y;return y<100?2000+y:y;};const pad=n=>String(n).padStart(2,'0');
+  let d,m,y,aprox=false,mt;
+  if((mt=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/)))[y,m,d]=[+mt[1],+mt[2],+mt[3]];
+  else if((mt=s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2}|\d{4})$/)))[d,m,y]=[+mt[1],+mt[2],yy(mt[3])];
+  else if((mt=s.match(/^(\d{1,2})[\/\-.](\d{2}|\d{4})$/))){[m,y]=[+mt[1],yy(mt[2])];d=1;aprox=true;}
+  else if((mt=s.match(/^([a-zñáéíóú]+)\.?[\s\-\/]*(\d{2}|\d{4})$/))&&_IMP_MES[mt[1].normalize('NFD').replace(/[̀-ͯ]/g,'').slice(0,3)]){m=_IMP_MES[mt[1].normalize('NFD').replace(/[̀-ͯ]/g,'').slice(0,3)];y=yy(mt[2]);d=1;aprox=true;}
+  else if((mt=s.match(/^(\d{1,2})[\s\-\/]*([a-zñáéíóú]+)\.?[\s\-\/]*(\d{2}|\d{4})$/))&&_IMP_MES[mt[2].normalize('NFD').replace(/[̀-ͯ]/g,'').slice(0,3)]){d=+mt[1];m=_IMP_MES[mt[2].normalize('NFD').replace(/[̀-ͯ]/g,'').slice(0,3)];y=yy(mt[3]);}
+  else if((mt=s.match(/^(19|20)\d{2}$/))){y=+s;m=6;d=1;aprox=true;}
+  else if((mt=s.match(/^\d{5}$/))&&+s>30000&&+s<60000){const dt=new Date(Date.UTC(1899,11,30)+(+s)*864e5);y=dt.getUTCFullYear();m=dt.getUTCMonth()+1;d=dt.getUTCDate();}
+  else return false;
+  if(!(m>=1&&m<=12&&d>=1&&d<=31&&y>=1950))return false;
+  const iso=`${y}-${pad(m)}-${pad(d)}`;const chk=new Date(iso+'T00:00:00');
+  if(chk.getMonth()+1!==m||iso>_hoyISO())return false;
+  return {iso,aprox};
+}
+function impLeerHoja(inp){
+  const f=inp.files&&inp.files[0];if(!f)return;
+  _impLeerArchivo(f).then(txt=>{
+    const rows=_impCSV(txt);if(rows.length<2){showToast('La hoja está vacía');return;}
+    const h=rows[0].map(x=>String(x).trim().toLowerCase());
+    const col=re=>h.findIndex(x=>re.test(x));
+    const iId=col(/^id/),iF=col(/afinaci/),iT=col(/tel/),iP=col(/piano/),iN=col(/nota/);
+    if(iId<0||iF<0){showToast('No parece la hoja de fechas (faltan las columnas ID y Última afinación)',4500);return;}
+    const cambios=[],errores=[];let sinCambio=0;
+    rows.slice(1).forEach((r,n)=>{
+      const id=String(r[iId]||'').trim();const mt=id.match(/^C(\d+)(?:\.P(\d+))?$/i);
+      if(!mt){if(id)errores.push(`Renglón ${n+2}: ID "${id}" no reconocido`);return;}
+      const c=state.clientes.find(x=>String(x.id)===mt[1]);if(!c){errores.push(`Renglón ${n+2}: el cliente ya no existe`);return;}
+      const p=mt[2]?(c.pianos||[]).find(x=>String(x.id)===mt[2]):null;
+      const fx=impParseFecha(r[iF]);
+      if(fx===false){errores.push(`${c.nombre}: fecha "${String(r[iF]).trim()}" no válida`);return;}
+      const tel=iT>=0?_impTel(r[iT]):'';const piano=iP>=0?String(r[iP]||'').trim():'';const notas=iN>=0?String(r[iN]||'').trim():'';
+      const ch={c,p,fx,tel:(!_telDigitos(c.telefono)&&tel)?tel:'',piano,notas:(notas&&notas!==(c.notas||''))?notas:null};
+      const pianoCambia=piano&&(!p||(p.marca==='Por definir'&&piano.toLowerCase()!=='por definir'));
+      if(!fx&&!ch.tel&&ch.notas==null&&!pianoCambia){sinCambio++;return;}
+      if(fx&&p){const u=p.ultimaAfinacion;if(u===fx.iso&&!!p.ultimaAfinacionAprox===fx.aprox&&!ch.tel&&ch.notas==null&&!pianoCambia){sinCambio++;return;}}
+      cambios.push(ch);
+    });
+    _impHoja={cambios};
+    const nF=cambios.filter(x=>x.fx).length,nT=cambios.filter(x=>x.tel).length;
+    openModal(`<div class="modal-title">📅 Hoja de fechas</div>
+    <div class="card" style="margin:0 0 12px;background:var(--bg);font-size:13px;line-height:1.7">
+      <b>${nF}</b> fecha${nF===1?'':'s'} de afinación · <b>${nT}</b> teléfono${nT===1?'':'s'} nuevo${nT===1?'':'s'} · ${cambios.filter(x=>x.notas!=null).length} notas<br>
+      <span style="color:var(--text3)">${sinCambio} renglones sin cambios</span></div>
+    ${errores.length?`<div style="font-size:12px;color:var(--danger);background:var(--danger-light);border-radius:8px;padding:8px 10px;margin-bottom:12px;max-height:22vh;overflow:auto"><b>${errores.length} renglón(es) no se aplican:</b><br>${errores.map(_esc).join('<br>')}</div>`:''}
+    <div style="max-height:30vh;overflow:auto;font-size:12px;margin-bottom:12px">${cambios.slice(0,300).map(x=>`<div style="padding:4px 0;border-bottom:1px solid var(--border)"><b>${_esc(x.c.nombre)}</b>${x.fx?' · '+fmtDate(x.fx.iso)+(x.fx.aprox?' aprox.':''):''}${x.tel?' · 📞 '+_esc(x.tel):''}${x.piano&&(!x.p||x.p.marca==='Por definir')?' · 🎹 '+_esc(x.piano):''}</div>`).join('')}</div>
+    <button class="btn btn-primary btn-full" onclick="impAplicarHoja()" ${cambios.length?'':'disabled style="opacity:.5"'}>Aplicar cambios</button>
+    <button class="btn btn-ghost btn-full" style="margin-top:8px" onclick="closeModal()">Cancelar</button>`);
+  }).catch(e=>{console.warn(e);showToast('No se pudo leer la hoja',4000);});
+}
+let _impHoja=null;
+function impAplicarHoja(){
+  if(!_impHoja)return;let n=0;
+  _impHoja.cambios.forEach(x=>{
+    const c=x.c;let p=x.p;
+    if(x.tel)c.telefono=x.tel;
+    if(x.notas!=null)c.notas=x.notas;
+    const partes=x.piano?x.piano.split(/\s+/):[];
+    if(!p&&(x.fx||x.piano)){ // sin piano: crear uno (con la marca escrita o "Por definir")
+      p=_pianoPorDefinir();if(partes.length){p.marca=partes[0];p.modelo=partes.slice(1).join(' ');}
+      if(!Array.isArray(c.pianos))c.pianos=[];c.pianos.push(p);
+    }else if(p&&p.marca==='Por definir'&&partes.length&&x.piano.toLowerCase()!=='por definir'){p.marca=partes[0];p.modelo=partes.slice(1).join(' ');}
+    if(x.fx&&p){p.ultimaAfinacion=x.fx.iso;p.ultimaAfinacionAprox=x.fx.aprox;if(c.seguimiento&&c.seguimiento.sinFechaConocida)c.seguimiento={...c.seguimiento,sinFechaConocida:false};}
+    n++;
+  });
+  saveState();closeModal();_impHoja=null;showToast(`✓ ${n} clientes actualizados`,3500);_segRefrescar();
+}
+
 // ── Prospectos: alta / detalle / edición / acciones ──
 function _prospOptsTipo(sel){return['Vertical','Grand','Cola'].map(t=>`<option value="${t}"${sel===t?' selected':''}>${t==='Grand'?'Cola (Grand)':t}</option>`).join('');}
 function showModalNuevoProspecto(){
@@ -3627,7 +3976,7 @@ function renderClientes(){
   const _nFor=state.clientes.filter(esForaneo).length;
   const f2=f.filter(c=>cliCat==='todos'||(cliCat==='foraneo'?esForaneo(c):!esForaneo(c)));
   document.getElementById('screen-clientes').innerHTML=`
-  <div class="page-header"><div class="page-title">Clientes</div><div class="page-sub">${state.clientes.length} clientes · ${state.clientes.reduce((s,c)=>s+c.pianos.length,0)} pianos${_sinTel?` · <span style="color:#c2185b">${_sinTel} sin teléfono</span>`:''}</div></div>
+  <div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px"><div><div class="page-title">Clientes</div><div class="page-sub">${state.clientes.length} clientes · ${state.clientes.reduce((s,c)=>s+c.pianos.length,0)} pianos${_sinTel?` · <span style="color:#c2185b">${_sinTel} sin teléfono</span>`:''}</div></div><button class="btn btn-ghost btn-xs" style="margin-top:4px;white-space:nowrap" onclick="impModalInicio()">📥 Importar</button></div>
   <div class="search-bar" style="margin-top:8px">
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
     <input class="search-input" placeholder="Buscar por nombre o marca…" value="${cliSearch}" oninput="cliSearch=this.value;renderClientes()">
@@ -5974,7 +6323,7 @@ function renderConfig(){
   </div>
   <div class="credits-block">
     <div class="credits-logo">🎹</div>
-    <div class="credits-app">PianoTune Pro v3.8.1</div>
+    <div class="credits-app">PianoTune Pro v3.8.2</div>
     <div class="credits-dev">Desarrollado por Sergio L. Ruiz Jones</div>
     <div class="credits-co">Pianos and Pianos — Mazatlán, Sin.</div>
   </div>`;
