@@ -305,7 +305,7 @@ body.kawaii .cli-sin-tel{background:#f7c9dc!important}
     ☁️ <span id="dt-sync-txt">Listo</span>
   </div>
   <div style="padding:10px 16px 14px">
-    <div style="color:rgba(255,255,255,.35);font-size:10px;font-weight:600;letter-spacing:.4px">PianoTune Pro v3.8.2</div>
+    <div style="color:rgba(255,255,255,.35);font-size:10px;font-weight:600;letter-spacing:.4px">PianoTune Pro v3.8.3</div>
   </div>
 </div>
 
@@ -1240,10 +1240,16 @@ function crdDiamLote(l){return l?(Number(l.diamMedido)||Number(l.diamNominal)||0
 function crdLotesTodos(material){return (state.lotesAlambre||[]).filter(l=>l&&l.material===material).sort((a,b)=>crdDiamLote(a)-crdDiamLote(b));}
 function crdLotes(material){return (state.lotesAlambre||[]).filter(l=>l&&l.material===material&&l.activo!==false);}
 function crdGetLote(id){return id==null?null:(state.lotesAlambre||[]).find(l=>String(l.id)===String(id))||null;}
-function crdCalLabel(l){return l?(l.sistema==='AWG'?'AWG'+l.calibre:l.sistema==='mm'?l.calibre+'mm':String(l.calibre)):'';}
+// v3.8.3 — AWG entero más cercano (en escala proporcional: la tabla AWG crece ~12 % por calibre)
+function crdAwgDiam(n){return 0.005*Math.pow(92,(36-n)/39);}
+function crdAwgCercano(d){d=Number(d);if(!(d>0))return null;const nf=36-39*Math.log(d/0.005)/Math.log(92);const n=Math.round(nf);const da=crdAwgDiam(n);return {awg:n,diam:da,pct:(d/da-1)*100};}
+// Cobre: el nombre sale del diámetro real del carrete (medido; si no, el de la etiqueta) → AWG entero más cercano
+function crdCalLabel(l){if(!l)return '';if(l.material==='cobre'){const a=crdAwgCercano(crdDiamLote(l));return a?'AWG'+a.awg:'';}return l.sistema==='AWG'?'AWG'+l.calibre:l.sistema==='mm'?l.calibre+'mm':String(l.calibre);}
+function crdCobreMedido(l){return !!(l&&Number(l.diamMedido)>0);}
 function crdAvisoLote(l){
   if(l&&l.material==='acero'&&/mapes/i.test(l.marca||'')&&!Number(l.diamMedido))
     return 'Mide el diámetro real: el acero Mapes suele venir corto.';
+  if(l&&l.material==='cobre'&&!crdCobreMedido(l))return 'Sin medir';
   return '';
 }
 // v3.8.2 — Calibre de piano (music wire gauge, tabla Roslau/Schaff) por diámetro nominal en milésimas
@@ -1257,6 +1263,11 @@ function _crdBaseClave(l){return l.material==='acero'?((l.marca||'Acero')+'-'+cr
 function crdClaveGa(l){if(!l)return '';const g=l.material==='acero'?crdGauge(l.diamNominal):'';return (l.clave||'')+(g?' - '+g+' Ga.':'');}
 // Corrige claves de acero: formato .030 y que coincidan con la marca y el diámetro actuales (se conserva el número de lote si cuadra)
 function crdNormalizarClaves(){
+  const cu=(state.lotesAlambre||[]).filter(l=>l&&l.material==='cobre').sort((a,b)=>String(a.fechaAlta||'').localeCompare(String(b.fechaAlta||''))||String(a.id).localeCompare(String(b.id)));
+  let cambioCu=false;const usCu={},pendCu=[];
+  cu.forEach(l=>{const base=_crdBaseClave(l);const m=String(l.clave||'').match(/^(.*)-(\d+)$/);
+    if(base&&m&&m[1]===base&&!(usCu[base]||{})[+m[2]]){(usCu[base]=usCu[base]||{})[+m[2]]=1;}else if(base)pendCu.push(l);});
+  pendCu.forEach(l=>{const base=_crdBaseClave(l);const u=usCu[base]=usCu[base]||{};let n=1;while(u[n])n++;u[n]=1;const nc=base+'-'+n;if(nc!==l.clave){l.clave=nc;cambioCu=true;}});
   const ac=(state.lotesAlambre||[]).filter(l=>l&&l.material==='acero').sort((a,b)=>String(a.fechaAlta||'').localeCompare(String(b.fechaAlta||''))||String(a.id).localeCompare(String(b.id)));
   const parse=c=>{const m=String(c||'').match(/^(.*)-(\.?\d*\.?\d+)-(\d+)$/);return m?{marca:m[1],d:parseFloat(m[2].startsWith('.')?'0'+m[2]:m[2]),n:+m[3]}:null;};
   const usados={};const pend=[];let cambio=false;
@@ -1264,7 +1275,7 @@ function crdNormalizarClaves(){
     if(p&&p.marca===(l.marca||'Acero')&&Math.abs(p.d-Number(l.diamNominal))<1e-6&&!(usados[base]||{})[p.n]){(usados[base]=usados[base]||{})[p.n]=1;const nc=base+'-'+p.n;if(nc!==l.clave){l.clave=nc;cambio=true;}}
     else pend.push(l);});
   pend.forEach(l=>{const base=_crdBaseClave(l);const u=usados[base]=usados[base]||{};let n=1;while(u[n])n++;u[n]=1;const nc=base+'-'+n;if(nc!==l.clave){l.clave=nc;cambio=true;}});
-  return cambio;
+  return cambio||cambioCu;
 }
 // ¿Alguna cuerda o combinación usa este lote? (entonces no se puede borrar, solo dar de baja)
 function crdLoteUsado(id){
@@ -1287,7 +1298,7 @@ function crdGuardarLote(datos){
   if(datos.id!=null){
     const l=crdGetLote(datos.id);if(!l)return null;
     Object.assign(l,datos,{updatedAt:now});
-    if(l.material==='acero')crdNormalizarClaves(); // v3.8.2 — la clave sigue a la marca y el diámetro
+    crdNormalizarClaves(); // v3.8.2 — la clave sigue a la marca y el diámetro · v3.8.3 — en cobre, al AWG más cercano a lo medido
     saveState();return l;
   }
   const l=Object.assign({id:nextId(),material:'cobre',clave:'',sistema:'AWG',calibre:null,marca:'',diamNominal:null,diamMedido:null,
@@ -1312,13 +1323,23 @@ function crdLoteAcero(Dnom,cfg=crdCfg()){
   return best&&best.d<=cfg.tolLoteAcero?best.l:null;
 }
 // Calibres de cobre disponibles: uno por calibre; loteId preseleccionado solo si hay un único lote activo
+// v3.8.3 — Una opción por diámetro real de carrete (no por calibre): el cálculo usa lo medido.
+// Nombre: "AWG17"; si dos carretes con distinto diámetro caen en el mismo AWG, se nombran por lote ("AWG17-2").
 function crdCalibresCobre(){
   const g={};
-  crdLotes('cobre').forEach(l=>{const k=crdCalLabel(l);(g[k]=g[k]||[]).push(l);});
-  return Object.keys(g).map(k=>{
-    const ls=g[k];
-    return {cal:k,diam:crdDiamLote(ls[0]),loteId:ls.length===1?ls[0].id:null,lotes:ls.map(l=>l.id)};
-  }).filter(c=>c.diam>0).sort((a,b)=>a.diam-b.diam);
+  crdLotes('cobre').forEach(l=>{const d=crdDiamLote(l);if(!(d>0))return;const k=d.toFixed(4);(g[k]=g[k]||[]).push(l);});
+  const grupos=Object.keys(g).map(k=>{
+    const ls=g[k].slice().sort((a,b)=>((crdExistencia(b)||{}).estimado||0)-((crdExistencia(a)||{}).estimado||0)); // primero el que tiene más
+    return {awg:crdCalLabel(ls[0]),diam:+k,loteId:ls[0].id,lotes:ls.map(l=>l.id),clave:ls[0].clave,medido:ls.some(crdCobreMedido)};
+  });
+  const n={};grupos.forEach(c=>n[c.awg]=(n[c.awg]||0)+1);
+  grupos.forEach(c=>c.cal=n[c.awg]>1?c.clave:c.awg);
+  return grupos.sort((a,b)=>a.diam-b.diam);
+}
+function crdLotesDeCal(cal){
+  const c=crdCalibresCobre().find(x=>x.cal===cal);
+  if(c)return c.lotes.map(crdGetLote).filter(Boolean);
+  return crdLotes('cobre').filter(l=>crdCalLabel(l)===cal||l.clave===cal);
 }
 
 // ── Física ──
@@ -1332,9 +1353,10 @@ function crdElongacion(ten,D,cfg=crdCfg()){
 function crdOdCalc(D,Ed,Fd,cfg=crdCfg()){return D+cfg.factorForss*((Ed||0)+(Fd||0));}
 
 // Promedio real de una combinación (registro de combinaciones, sin descartadas)
-function crdPromedioReal(capa,D,E_cal,F_cal){
+function crdPromedioReal(capa,D,E_cal,F_cal,Elotes,Flotes){
+  const igual=(rc,rl,cal,lotes)=>(rl!=null&&lotes&&lotes.length)?lotes.some(id=>String(id)===String(rl)):(rc||'')===(cal||'');
   const rs=(state.combinacionesCobre||[]).filter(r=>r&&!r.descartada&&r.capa===capa&&Math.abs((r.D_ef||r.D||0)-D)<.0005
-    &&(r.E_cal||'')===(E_cal||'')&&(r.F_cal||'')===(F_cal||'')&&r.odReal>0);
+    &&igual(r.E_cal,r.E_loteId,E_cal,Elotes)&&igual(r.F_cal,r.F_loteId,F_cal,Flotes)&&r.odReal>0);
   if(!rs.length)return null;
   return {avg:rs.reduce((s,r)=>s+r.odReal,0)/rs.length,n:rs.length};
 }
@@ -1361,7 +1383,8 @@ function crdSugerirCobre(D,OD,doble,cfg=crdCfg()){
     E_cal:o.E?o.E.cal:null,E_diam:o.E?o.E.diam:null,E_loteId:o.E?o.E.loteId:null,
     F_cal:o.F.cal,F_diam:o.F.diam,F_loteId:o.F.loteId,
     odCalc:+o.od.toFixed(4),dif:+(o.od-OD).toFixed(4),
-    real:crdPromedioReal(capa,D,o.E?o.E.cal:null,o.F.cal)
+    real:crdPromedioReal(capa,D,o.E?o.E.cal:null,o.F.cal,o.E?o.E.lotes:null,o.F.lotes),
+    F_medido:o.F.medido,E_medido:o.E?o.E.medido:null
   }));
   let elegida=0;
   if(opciones.length===2&&Math.abs(opciones[1].dif)<Math.abs(opciones[0].dif))elegida=1;
@@ -1721,7 +1744,7 @@ function crdExistencia(l){
 // Metros de cobre estimados en existencia por calibre (suma de lotes activos pesados; null si ninguno pesado)
 function crdMetrosExistencia(cal){
   let m=null;
-  crdLotes('cobre').filter(l=>crdCalLabel(l)===cal).forEach(l=>{const e=crdExistencia(l);if(e&&e.metros!=null)m=(m||0)+e.metros;});
+  crdLotesDeCal(cal).forEach(l=>{const e=crdExistencia(l);if(e&&e.metros!=null)m=(m||0)+e.metros;});
   return m;
 }
 
@@ -1977,7 +2000,7 @@ function crdModalCaptura(ordenId,clienteId,pianoId,pre){
   _crdCap={ordenId:o?o.id:null,clienteId:o?o.clienteId:clienteId,pianoId:o?o.pianoId:pianoId,firmaAvisos:''};
   pre=pre||{};const cfg=crdCfg();
   const cal=crdCalibresCobre();
-  const calOpts=sel=>`<option value="">${'Sugerir por OD'}</option>`+cal.map(c=>`<option value="${c.cal}" ${sel===c.cal?'selected':''}>${c.cal} · ${_crdIn(c.diam)}</option>`).join('');
+  const calOpts=sel=>`<option value="">${'Sugerir por OD'}</option>`+cal.map(c=>`<option value="${c.cal}" ${sel===c.cal?'selected':''}>${c.cal} · ${_crdIn(c.diam)}${c.medido?'':' · sin medir'}</option>`).join('');
   const notaOpts=Array.from({length:40},(_,i)=>i+1).map(n=>`<option value="${n}" ${n===(pre.nota||1)?'selected':''}>${n} · ${notaNombre(n)}</option>`).join('');
   const tipo=pre.tipo||'BS';
   const fld=(id,lbl,val,ph,extra='')=>`<div class="input-group" style="margin-bottom:10px"><label class="input-label">${lbl}</label><input class="input" id="${id}" inputmode="decimal" value="${val!=null?val:''}" placeholder="${ph||''}" ${extra}></div>`;
@@ -2123,11 +2146,11 @@ function crdModalFicha(ordenId,folio){
     if(sug)cobreHtml=`<div class="modal-sub">Cobre</div><div style="display:flex;gap:6px;flex-wrap:wrap">${sug.opciones.map((op,k)=>{
       const act=op.F_cal===c.F_cal&&(op.E_cal||null)===(c.E_cal||null);
       return `<button class="btn btn-sm ${act?'btn-primary':'btn-ghost'}" style="flex:1;flex-direction:column;align-items:flex-start;white-space:normal" onclick='crdElegirCobre("${o.id}","${c.folio}",${JSON.stringify(op)});crdModalFicha("${o.id}","${c.folio}")'>
-        <span>${op.E_cal?op.E_cal+' + ':''}${op.F_cal}</span><span style="font-size:11px;font-weight:400">${_crdIn(op.odCalc)} calc (${op.dif>0?'+':''}${(op.dif*1000).toFixed(1)})${op.real?` · ${_crdIn(op.real.avg)} real (${op.real.n})`:''}</span></button>`;}).join('')}</div>`;
+        <span>${op.E_cal?op.E_cal+' + ':''}${op.F_cal}${op.F_medido===false||op.E_medido===false?' <span style="font-size:10px;color:var(--warning)">⚠️ sin medir</span>':''}</span><span style="font-size:11px;font-weight:400">${op.E_cal?_crdIn(op.E_diam)+' + ':''}${_crdIn(op.F_diam)} · ${_crdIn(op.odCalc)} calc (${op.dif>0?'+':''}${(op.dif*1000).toFixed(1)})${op.real?` · ${_crdIn(op.real.avg)} real (${op.real.n})`:''}</span></button>`;}).join('')}</div>`;
   }
   // Lotes: solo si hay más de uno del mismo calibre / diámetro
   const loteSel=(id,lotes,sel)=>lotes.length>1?`<select class="input select" id="${id}" style="margin-top:4px">${lotes.map(l=>`<option value="${l.id}" ${String(l.id)===String(sel)?'selected':''}>${_crdEsc(l.clave)}${l.marca?' · '+_crdEsc(l.marca):''}</option>`).join('')}</select>`:'';
-  const lotesCal=cal=>crdLotes('cobre').filter(l=>crdCalLabel(l)===cal);
+  const lotesCal=cal=>crdLotesDeCal(cal);
   const lotesD=crdLotes('acero').filter(l=>Math.abs(crdDiamLote(l)-c.D)<=cfg.tolLoteAcero);
   const faltaHtml=c.faltaA?`<div style="background:var(--warning-light);border-radius:8px;padding:10px;margin:8px 0">
     <div style="font-weight:700;font-size:13px;margin-bottom:6px">⚠️ Falta A: la escala no trae BPHP para esta cuerda</div>
@@ -2321,7 +2344,7 @@ function crdModalLote(material,id){
       ${CRD_MARCAS_ACERO.map(m=>`<option ${(otra?'Otra':marcaSel)===m?'selected':''}>${m}</option>`).join('')}</select>
       <input class="input" id="crd-l-otra" placeholder="¿Cuál?" value="${otra?_crdEsc(l.marca):''}" style="margin-top:6px;${otra?'':'display:none'}"></div>
     <div class="input-group"><label class="input-label">Diámetro nominal *</label><input class="input" id="crd-l-nom" inputmode="decimal" placeholder=".041 o 41" value="${l&&l.diamNominal?_crdIn4(l.diamNominal):''}"></div>
-  </div>`:(l?`<div style="font-size:13px;color:var(--text2);margin-bottom:10px">${crdCalLabel(l)} · nominal ${_crdIn4(l.diamNominal)}</div>`:`
+  </div>`:(l?`<div style="font-size:13px;color:var(--text2);margin-bottom:10px">${crdCalLabel(l)} · etiqueta ${l.sistema==='mm'?l.calibre+' mm = ':'AWG '+l.calibre+' = '}${_crdIn4(l.diamNominal)}"</div>`:`
   <div style="display:grid;grid-template-columns:1fr 2fr;gap:8px">
     <div class="input-group"><label class="input-label">Sistema</label><select class="input select" id="crd-l-sis" onchange="document.getElementById('crd-l-awg').style.display=this.value==='AWG'?'':'none';document.getElementById('crd-l-mm').style.display=this.value==='mm'?'':'none'"><option>AWG</option><option value="mm">mm (métrico)</option></select></div>
     <div class="input-group"><label class="input-label">Calibre</label><select class="input select" id="crd-l-awg">${awgOpts}</select>
@@ -2329,9 +2352,10 @@ function crdModalLote(material,id){
   </div>
   <div class="input-group"><label class="input-label">Marca</label><input class="input" id="crd-l-marcaCu" placeholder="Opcional"></div>`)}
   ${l&&!ac?`<div class="input-group"><label class="input-label">Marca</label><input class="input" id="crd-l-marcaCu" value="${_crdEsc(l.marca||'')}" placeholder="Opcional"></div>`:''}
-  <div class="input-group"><label class="input-label">Diámetro medido (micrómetro)${ac?'':' · opcional'}</label>
-    <input class="input" id="crd-l-med" inputmode="decimal" placeholder="Si lo mides, el cálculo usa este valor" value="${l&&Number(l.diamMedido)?_crdIn4(l.diamMedido):''}" oninput="crdLoteAvisoUI()"></div>
+  <div class="input-group"><label class="input-label">Diámetro medido (micrómetro, pulgadas)${ac?'':' · el cálculo usa este valor'}</label>
+    <input class="input" id="crd-l-med" inputmode="decimal" placeholder="${ac?'Si lo mides, el cálculo usa este valor':'.0475 o 475'}" value="${l&&Number(l.diamMedido)?_crdIn4(l.diamMedido):''}" oninput="crdLoteAvisoUI()" ${ac?'':'style="font-size:18px;font-weight:700"'}></div>
   <div id="crd-l-aviso" style="font-size:12px;color:var(--warning);font-weight:600;min-height:4px;margin:-6px 0 8px"></div>
+  ${ac?'':`<div id="crd-l-awgprev" style="font-size:12px;color:var(--text2);margin:-4px 0 10px"></div>`}
   <div class="modal-sub">Existencia</div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
     <div class="input-group" style="margin-bottom:6px"><label class="input-label">Peso total (g)</label><input class="input" id="crd-l-bruto" inputmode="decimal" placeholder="En la báscula" value="${l&&Number(l.pesoBruto)?l.pesoBruto:''}" oninput="crdLotePesoUI()" style="font-size:18px;font-weight:700"></div>
@@ -2349,7 +2373,9 @@ function crdModalLote(material,id){
   ${l?`<button class="btn btn-ghost btn-full btn-sm" style="margin-top:6px;${l.activo!==false?'color:var(--danger)':''}" onclick="crdDesactivarLote('${l.id}',${l.activo===false});closeModal();_crdCfgAbierto=true;renderConfig();showToast('${l.activo===false?'Lote reactivado':'Lote dado de baja'}')">${l.activo===false?'Reactivar lote':'Dar de baja (carrete terminado)'}</button>
   ${l.activo===false?(crdLoteUsado(l.id)?'<div style="font-size:11px;color:var(--text3);text-align:center;margin-top:6px">Se usó en cuerdas: se conserva como historial.</div>':`<button class="btn btn-ghost btn-full btn-sm" style="margin-top:6px;color:var(--danger)" onclick="crdEliminarLote('${l.id}')">🗑 Eliminar lote</button>`):''}`:''}
   <button class="btn btn-ghost btn-full btn-sm" style="margin-top:6px" onclick="closeModal()">Cancelar</button>`);
+  window._crdLoteNom=l&&!ac?Number(l.diamNominal)||null:null;
   crdLoteAvisoUI();crdLotePesoUI();
+  ['crd-l-sis','crd-l-awg','crd-l-mm'].forEach(id=>{const e=document.getElementById(id);if(e)e.addEventListener(id==='crd-l-mm'?'input':'change',crdLoteAvisoUI);});
 }
 const _crdG=g=>g>=1000?(g/1000).toFixed(2)+' kg':Math.round(g)+' g';
 function _crdPesoTxt(l){
@@ -2361,7 +2387,19 @@ function crdLotePesoUI(){
   const b=_crdNum(document.getElementById('crd-l-bruto').value),t=_crdNum(document.getElementById('crd-l-tara').value)||0;
   el.innerHTML=b>0?(t>=b?'<span style="color:var(--danger)">El vacío no puede pesar más que el total.</span>':`Neto: <b>${_crdG(b-t)}</b>${t?'':' · sin descontar el vacío'}`):'';
 }
+// v3.8.3 — Cobre: diámetro de referencia (lo medido o, si no, la etiqueta: AWG o mm)
+function _crdCuRefUI(){
+  const v=k=>{const e=document.getElementById(k);return e?e.value.trim():'';};
+  const med=crdPulg(v('crd-l-med'));
+  let nom=null;const sis=document.getElementById('crd-l-sis');
+  if(sis){nom=sis.value==='mm'?(_crdNum(v('crd-l-mm'))>0?_crdNum(v('crd-l-mm'))/CRD_IN:null):(CRD_AWG[Number(v('crd-l-awg'))]||null);}
+  else if(window._crdLoteNom)nom=window._crdLoteNom;
+  return {med,nom};
+}
 function crdLoteAvisoUI(){
+  const pv=document.getElementById('crd-l-awgprev');
+  if(pv){const {med,nom}=_crdCuRefUI();const d=med||nom;const a=crdAwgCercano(d);
+    pv.innerHTML=a?`${med?'Medido':'Etiqueta'} ${_crdIn4(d)}" = ${(d*CRD_IN).toFixed(3)} mm → <b>AWG ${a.awg}</b>${Math.abs(a.pct)>1?` (${a.pct>0?'+':''}${a.pct.toFixed(1)} %)`:''}${med&&nom&&Math.abs(med/nom-1)>.08?` <span style="color:var(--danger);font-weight:600">· ${((med/nom-1)*100).toFixed(0)} % contra la etiqueta, revisa</span>`:''}${med?'':' <span style="color:var(--warning)">· sin medir</span>'}`:'';}
   const el=document.getElementById('crd-l-aviso'),m=document.getElementById('crd-l-marca');if(!el)return;
   el.textContent=m&&m.value==='Mapes'&&!crdPulg(document.getElementById('crd-l-med').value)?'⚠️ Mide el diámetro real: el acero Mapes suele venir corto.':'';
 }
@@ -2369,6 +2407,7 @@ function crdGuardarLoteUI(material,id,irA){
   const v=k=>{const e=document.getElementById(k);return e?e.value.trim():'';};
   const med=crdPulg(v('crd-l-med'));
   if(v('crd-l-med')&&!(med>0&&med<.2)){showToast('Diámetro medido inválido');return;}
+  if(material==='cobre'&&med){const {nom}=_crdCuRefUI();if(nom&&Math.abs(med/nom-1)>.08&&!confirm(`Lo medido (${_crdIn4(med)}") difiere ${((med/nom-1)*100).toFixed(0)} % de la etiqueta (${_crdIn4(nom)}"). ¿Guardar así? El nombre se ajustará al AWG más cercano.`))return;}
   const bruto=_crdNum(v('crd-l-bruto')),tara=_crdNum(v('crd-l-tara'));
   if(v('crd-l-bruto')&&!(bruto>0&&bruto<100000)){showToast('Peso total inválido (gramos)');return;}
   if(v('crd-l-tara')&&!(tara>=0&&(!bruto||tara<bruto))){showToast('El vacío no puede pesar más que el total');return;}
@@ -2936,7 +2975,7 @@ async function renderInicio(){
         ${perfAvatar}
         <div><div class="page-title">Hola, ${tec.nombre||'Técnico'}</div>
         <div class="page-sub">${new Date().toLocaleDateString('es-MX',{weekday:'long',day:'numeric',month:'long'})}</div>
-        <div style="font-size:10px;color:var(--text3);margin-top:1px;letter-spacing:.3px">PianoTune Pro v3.8.2</div></div>
+        <div style="font-size:10px;color:var(--text3);margin-top:1px;letter-spacing:.3px">PianoTune Pro v3.8.3</div></div>
       </div>
       <button class="btn btn-ghost btn-xs" onclick="navigate('config')">⚙ Config</button>
     </div>
@@ -6323,7 +6362,7 @@ function renderConfig(){
   </div>
   <div class="credits-block">
     <div class="credits-logo">🎹</div>
-    <div class="credits-app">PianoTune Pro v3.8.2</div>
+    <div class="credits-app">PianoTune Pro v3.8.3</div>
     <div class="credits-dev">Desarrollado por Sergio L. Ruiz Jones</div>
     <div class="credits-co">Pianos and Pianos — Mazatlán, Sin.</div>
   </div>`;
