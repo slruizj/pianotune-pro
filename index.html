@@ -305,7 +305,7 @@ body.kawaii .cli-sin-tel{background:#f7c9dc!important}
     ☁️ <span id="dt-sync-txt">Listo</span>
   </div>
   <div style="padding:10px 16px 14px">
-    <div style="color:rgba(255,255,255,.35);font-size:10px;font-weight:600;letter-spacing:.4px">PianoTune Pro v3.8.0</div>
+    <div style="color:rgba(255,255,255,.35);font-size:10px;font-weight:600;letter-spacing:.4px">PianoTune Pro v3.8.1</div>
   </div>
 </div>
 
@@ -1866,7 +1866,7 @@ function crdModalNuevaOrden(clienteId,pianoId){
     <div class="input-group"><label class="input-label">Cliente</label>
       <select class="input select" id="crd-no-c" onchange="crdNoPianos()">${cOpts}</select></div>
     <div class="input-group"><label class="input-label">Piano</label><select class="input select" id="crd-no-p"></select></div>
-    <button class="btn btn-primary btn-full" onclick="const c=+document.getElementById('crd-no-c').value,p=+document.getElementById('crd-no-p').value;if(!p){showToast('El cliente no tiene pianos');return;}crdModalNuevaOrden(c,p)">Continuar</button>`);
+    <button class="btn btn-primary btn-full" onclick="const c=+document.getElementById('crd-no-c').value,pv=document.getElementById('crd-no-p').value;if(pv==='nuevo'){showModalNuevoPiano(c);return;}const p=+pv;if(!p){showToast('Agrega el piano al que van las cuerdas');return;}crdModalNuevaOrden(c,p)">Continuar</button>`);
     crdNoPianos();return;
   }
   const cli=getCliente(clienteId),p=getPiano(clienteId,pianoId);
@@ -1884,7 +1884,7 @@ function crdModalNuevaOrden(clienteId,pianoId){
 }
 function crdNoPianos(){
   const c=getCliente(+document.getElementById('crd-no-c').value),sel=document.getElementById('crd-no-p');
-  sel.innerHTML=c&&c.pianos.length?c.pianos.map(p=>`<option value="${p.id}">${_crdEsc(p.marca+' '+p.modelo)} (${p.tipo})</option>`).join(''):'<option value="">Sin pianos</option>';
+  sel.innerHTML=(c&&c.pianos.length?c.pianos.map(p=>`<option value="${p.id}">${_crdEsc(p.marca+' '+p.modelo)} (${p.tipo})</option>`).join(''):'<option value="">Sin pianos</option>')+'<option value="nuevo">➕ Agregar el piano al que van las cuerdas…</option>';
 }
 
 // ══ ESCENARIO 2: IMPORTAR PSCALE ══
@@ -2885,7 +2885,7 @@ async function renderInicio(){
         ${perfAvatar}
         <div><div class="page-title">Hola, ${tec.nombre||'Técnico'}</div>
         <div class="page-sub">${new Date().toLocaleDateString('es-MX',{weekday:'long',day:'numeric',month:'long'})}</div>
-        <div style="font-size:10px;color:var(--text3);margin-top:1px;letter-spacing:.3px">PianoTune Pro v3.8.0</div></div>
+        <div style="font-size:10px;color:var(--text3);margin-top:1px;letter-spacing:.3px">PianoTune Pro v3.8.1</div></div>
       </div>
       <button class="btn btn-ghost btn-xs" onclick="navigate('config')">⚙ Config</button>
     </div>
@@ -2912,7 +2912,7 @@ async function renderInicio(){
   <div onclick="navigate('contactar')" style="margin:4px 16px 0;background:linear-gradient(135deg,#7c3aed,#a855f7);border-radius:var(--radius);padding:13px 16px;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:space-between;box-shadow:0 2px 8px rgba(124,58,237,.3)">
     <div>
       <div style="font-weight:700;font-size:15px">📞 Seguimiento</div>
-      <div style="font-size:12px;opacity:.92;margin-top:2px">${(()=>{const g=segGrupos();return `${g.hoy.length} llamadas hoy · ${g.vencidos.length} vencidos${g.confirmar.length?' · '+g.confirmar.length+' por confirmar':''}`;})()}</div>
+      <div style="font-size:12px;opacity:.92;margin-top:2px">${(()=>{const g=segGrupos();return `${g.hoy.length} llamada${g.hoy.length===1?'':'s'} hoy · ${g.vencidos.length} vencidos${g.confirmar.length?' · '+g.confirmar.length+' por confirmar':''}`;})()}</div>
     </div>
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><polyline points="9,18 15,12 9,6"/></svg>
   </div>
@@ -3037,6 +3037,12 @@ function _waTel(t){let d=_telDigitos(t);if(d.length===10)d='52'+d;return d;}
 function _esAfinacion(txt){return /afina/i.test(txt||'');}
 function _citaCerrada(ct){const op=opEstado(ct);return !!(ct.ordenServicio&&ct.ordenServicio.fechaCierre)||!['pendiente','vencida','en_curso','cancelada'].includes(op);}
 function _citaRecurrente(ct){return !!(ct.origenCitaId||ct.cicloMeses);}
+// v3.8.1 — Categoría de cliente: local (servicio) o foráneo (solo productos: técnicos, venta de cuerdas)
+function esForaneo(c){return !!c&&c.categoria==='foraneo';}
+function _catSelect(id,sel,onch){return `<div class="input-group"><label class="input-label">Categoría</label><select class="input select" id="${id}" onchange="${onch||''}">
+  <option value="local"${sel!=='foraneo'?' selected':''}>🏠 Local · afinación y servicio</option>
+  <option value="foraneo"${sel==='foraneo'?' selected':''}>🚚 Foráneo · solo productos</option></select>
+  <div style="font-size:11px;color:var(--text2);margin-top:4px">Foráneo: técnicos y clientes a quienes se venden cuerdas o productos. No entran al Seguimiento y no piden piano.</div></div>`;}
 
 // Última afinación de un piano: dato capturado → última cita de afinación cerrada → último servicio
 function segUltimaAfin(cli,p,citasCli){
@@ -3066,6 +3072,7 @@ function segInfoCliente(cli,citasCli,hoy){
   // piano de referencia: el más atrasado respecto a su límite
   let ref=null;pianos.forEach(x=>{if(x.u&&(!ref||(x.meses-x.limite)>(ref.meses-ref.limite)))ref=x;});
   const info={cli,s,pianos,ref,meses:ref?ref.meses:null,estatus:s.estatus||null,fechaRecontacto:s.fechaRecontacto||null,cita:null};
+  if(esForaneo(cli)){info.grupo='foraneo';return info;} // v3.8.1 — solo productos: fuera del seguimiento
   if(s.noContactar){info.grupo='nocontactar';return info;}
   // Citas pendientes del cliente
   const pend=citasCli.filter(ct=>['pendiente','vencida'].includes(opEstado(ct))&&ct.fecha).sort((a,b)=>a.fecha.localeCompare(b.fecha));
@@ -3105,7 +3112,7 @@ function segGrupos(){
   const hoy=_hoyISO();const porCli={};
   state.citas.forEach(ct=>{(porCli[ct.clienteId]=porCli[ct.clienteId]||[]).push(ct);});
   const g={};SEG_GRUPOS.forEach(x=>g[x.k]=[]);
-  state.clientes.forEach(c=>{const i=segInfoCliente(c,porCli[c.id]||[],hoy);g[i.grupo].push(i);});
+  state.clientes.forEach(c=>{if(esForaneo(c))return;const i=segInfoCliente(c,porCli[c.id]||[],hoy);g[i.grupo].push(i);});
   const byNom=(a,b)=>a.cli.nombre.localeCompare(b.cli.nombre,'es');
   g.hoy.sort((a,b)=>(a.fechaRecontacto||a.cita?.fecha||'').localeCompare(b.fechaRecontacto||b.cita?.fecha||'')||byNom(a,b));
   g.confirmar.sort((a,b)=>a.cita.fecha.localeCompare(b.cita.fecha));
@@ -3277,7 +3284,11 @@ function segRegSet(k,v){
 }
 function segGuardarRegistro(agendar){
   const r=_segReg;if(!r)return;const c=getCliente(r.cid);if(!c)return;
-  if(!r.resultado){showToast('Elige el resultado');return;}
+  if(!r.resultado){
+    // Solo cambiar "No volver a contactar" sin registrar contacto
+    const nc=document.getElementById('segr-nocont').checked;
+    if(nc!==!!(c.seguimiento&&c.seguimiento.noContactar)){c.seguimiento=Object.assign({},c.seguimiento||{},{noContactar:nc});saveState();closeModal();_segReg=null;showToast(nc?'Marcado: no volver a contactar':'Vuelve al seguimiento ✓');_segRefrescar();return;}
+    showToast('Elige el resultado');return;}
   if(r.resultado==='contesto'&&!r.respuesta){showToast('Elige qué dijo el cliente');return;}
   const motivoOtro=r.motivo==='Otro'?(document.getElementById('segr-mot-otro').value||'').trim().slice(0,40):'';
   if(r.motivo==='Otro'&&!motivoOtro){showToast('Escribe el motivo');return;}
@@ -3353,6 +3364,7 @@ function _segRefrescar(){if(currentScreen==='contactar')renderContactar();else i
 
 // ── Sección "Seguimiento" en la ficha del cliente ──
 function segSeccionFicha(c){
+  if(esForaneo(c))return `<div class="card" style="margin:0 0 12px;background:var(--bg);font-size:12px;color:var(--text2)">🚚 <b>Cliente foráneo · solo productos</b>${c.ciudad?' · '+_esc(c.ciudad):''}<br>No entra al Seguimiento de afinaciones. Cámbialo en ✏️ Editar datos si empieza a recibir servicio.</div>`;
   const info=segInfoCliente(c);const s=c.seguimiento||{};
   const g=SEG_GRUPOS.find(x=>x.k===info.grupo);
   const est=s.estatus&&SEG_EST[s.estatus];
@@ -3607,24 +3619,28 @@ function guardarEdicionProspecto(id){
 
 // ══ SCREEN: CLIENTES ══
 let cliSearch='';
+let cliCat='todos'; // v3.8.1 — filtro Locales / Foráneos
 function renderClientes(){
   const _q=cliSearch.toLowerCase(),_qd=cliSearch.replace(/\D/g,'');
   const f=state.clientes.filter(c=>c.nombre.toLowerCase().includes(_q)||(c.pianos||[]).some(p=>(p.marca||'').toLowerCase().includes(_q))||(_qd.length>=3&&_telDigitos(c.telefono).includes(_qd)));
   const _sinTel=state.clientes.filter(c=>!_telDigitos(c.telefono)).length;
+  const _nFor=state.clientes.filter(esForaneo).length;
+  const f2=f.filter(c=>cliCat==='todos'||(cliCat==='foraneo'?esForaneo(c):!esForaneo(c)));
   document.getElementById('screen-clientes').innerHTML=`
   <div class="page-header"><div class="page-title">Clientes</div><div class="page-sub">${state.clientes.length} clientes · ${state.clientes.reduce((s,c)=>s+c.pianos.length,0)} pianos${_sinTel?` · <span style="color:#c2185b">${_sinTel} sin teléfono</span>`:''}</div></div>
   <div class="search-bar" style="margin-top:8px">
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
     <input class="search-input" placeholder="Buscar por nombre o marca…" value="${cliSearch}" oninput="cliSearch=this.value;renderClientes()">
   </div>
+  ${_nFor?`<div style="display:flex;gap:6px;padding:0 16px 6px">${[['todos','Todos',state.clientes.length],['local','🏠 Locales',state.clientes.length-_nFor],['foraneo','🚚 Foráneos',_nFor]].map(([k,l,n])=>`<button class="btn btn-xs ${cliCat===k?'btn-primary':'btn-ghost'}" onclick="cliCat='${k}';renderClientes()">${l} <b>${n}</b></button>`).join('')}</div>`:''}
   <div style="padding:0 16px">
-  ${f.map(c=>{const fp=c.pianos[0];
+  ${f2.map(c=>{const fp=c.pianos[0];
     const thumb=fp&&fp.fotos&&fp.fotos.length?`<img src="${fp.fotos[0]}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:'';
     const _st=!_telDigitos(c.telefono);
     return`<div class="list-item${_st?' cli-sin-tel':''}" onclick="showModalCliente(${c.id})">
       <div class="avatar">${thumb||initials(c.nombre)}</div>
       <div style="flex:1"><div class="item-title">${c.nombre}</div>
-      <div class="item-sub">${(c.pianos||[]).map(p=>(p.marca||'')+' '+(p.modelo||'')).join(' · ')}${_st?' · <span style="color:#c2185b">sin teléfono</span>':' · '+c.telefono}</div></div>
+      <div class="item-sub">${esForaneo(c)?'<span style="color:var(--primary);font-weight:600">🚚 Foráneo'+(c.ciudad?' · '+_esc(c.ciudad):'')+'</span>'+((c.pianos||[]).length?' · ':''):''}${(c.pianos||[]).map(p=>(p.marca||'')+' '+(p.modelo||'')).join(' · ')}${_st?' · <span style="color:#c2185b">sin teléfono</span>':' · '+c.telefono}</div></div>
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2"><polyline points="9,18 15,12 9,6"/></svg>
     </div>`;}).join('')}
   </div>`;
@@ -3638,7 +3654,7 @@ function showModalCliente(id){
   <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
     <div class="avatar" style="width:50px;height:50px;font-size:18px">${initials(c.nombre)}</div>
     <div><div style="font-weight:700;font-size:17px">${c.nombre}</div>
-    <div style="font-size:13px;color:var(--text2)">${c.pianos.length} piano${c.pianos.length!==1?'s':''}</div></div>
+    <div style="font-size:13px;color:var(--text2)">${esForaneo(c)?'<span class="tag tag-blue" style="font-size:10px">🚚 Foráneo'+(c.ciudad?' · '+_esc(c.ciudad):'')+'</span> ':''}${c.pianos.length} piano${c.pianos.length!==1?'s':''}</div></div>
   </div>
   <div class="card" style="margin:0 0 12px;background:var(--bg)">
     <div style="font-size:13px;display:flex;flex-direction:column;gap:6px">
@@ -3648,10 +3664,11 @@ function showModalCliente(id){
       ${c.cp?`<div>📮 CP: ${c.cp}</div>`:''}
       ${c.rfc?`<div>🧾 RFC: <b>${c.rfc}</b></div>`:''}
       ${c.razonSocial?`<div>🏢 ${c.razonSocial}</div>`:''}
-      ${c.lat&&c.lon?`<div>🗺 <span style="font-family:monospace;font-size:11px;color:var(--text2)">${c.lat.toFixed(5)}, ${c.lon.toFixed(5)}</span></div>`:'<div style="color:var(--text3);font-size:12px">🗺 Sin coordenadas GPS</div>'}
+      ${c.ciudad?`<div>🏙 ${_esc(c.ciudad)}</div>`:''}
+      ${esForaneo(c)?'':(c.lat&&c.lon?`<div>🗺 <span style="font-family:monospace;font-size:11px;color:var(--text2)">${c.lat.toFixed(5)}, ${c.lon.toFixed(5)}</span></div>`:'<div style="color:var(--text3);font-size:12px">🗺 Sin coordenadas GPS</div>')}
     </div>
   </div>
-  <button class="btn btn-primary btn-full" style="margin-bottom:8px" onclick="irAUbicacion(${id})">🗺 Ir al destino</button>
+  ${esForaneo(c)?'':`<button class="btn btn-primary btn-full" style="margin-bottom:8px" onclick="irAUbicacion(${id})">🗺 Ir al destino</button>`}
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:12px">
     <button class="btn btn-ghost btn-sm" onclick="closeModal();showModalEditarCliente(${id})">✏️ Editar datos</button>
     <button class="btn btn-ghost btn-sm" onclick="segLlamar(${c.id})">📞 Llamar</button>
@@ -3783,6 +3800,8 @@ function showModalEditarCliente(id){
   </div>
   <div class="input-group"><label class="input-label">Razón Social</label><input class="input" id="ec-rs" value="${c.razonSocial||''}" spellcheck="true" placeholder="Para facturas"></div>
   <div class="input-group"><label class="input-label">Tipo de cliente</label><select class="input" id="ec-tipo"><option value="particular"${(c.tipoCliente||'particular')==='particular'?' selected':''}>Particular</option><option value="empresarial"${c.tipoCliente==='empresarial'?' selected':''}>Empresarial (gobierno, empresa, teatro)</option></select></div>
+  ${_catSelect('ec-cat',c.categoria,"document.getElementById('ec-ciudad-wrap').style.display=this.value==='foraneo'?'':'none'")}
+  <div class="input-group" id="ec-ciudad-wrap" style="display:${esForaneo(c)?'':'none'}"><label class="input-label">Ciudad / Estado</label><input class="input" id="ec-ciudad" value="${_esc(c.ciudad||'')}" placeholder="Ej. Culiacán, Sin." spellcheck="true"></div>
   <div class="input-group"><label class="input-label">Notas</label><textarea class="input" id="ec-no" spellcheck="true">${c.notas||''}</textarea></div>
   <div class="gps-card">
     <div style="font-weight:700;font-size:14px">📍 Coordenadas GPS</div>
@@ -3802,6 +3821,9 @@ function guardarCliente(id){
   c.cp=(document.getElementById('ec-cp').value||'').trim();
   c.razonSocial=(document.getElementById('ec-rs').value||'').trim();
   c.tipoCliente=(document.getElementById('ec-tipo')&&document.getElementById('ec-tipo').value)||c.tipoCliente||'particular';
+  const _cat=document.getElementById('ec-cat')?.value;
+  if(_cat==='foraneo'){c.categoria='foraneo';c.ciudad=(document.getElementById('ec-ciudad')?.value||'').trim();}
+  else if(_cat==='local'){delete c.categoria;}
   saveState();closeModal();showToast('Datos actualizados ✓');renderScreen(currentScreen);
 }
 
@@ -3867,15 +3889,26 @@ function showModalNuevoCliente(retPresup){
   </div>
   <div class="input-group"><label class="input-label">Razón Social</label><input class="input" id="nc-rs" spellcheck="true" placeholder="Para facturas (opcional)"></div>
   <div class="input-group"><label class="input-label">Tipo de cliente</label><select class="input" id="nc-tipo"><option value="particular">Particular</option><option value="empresarial">Empresarial (gobierno, empresa, teatro)</option></select></div>
+  ${_catSelect('nc-cat','local','_ncCategoria()')}
+  <div class="input-group" id="nc-ciudad-wrap" style="display:none"><label class="input-label">Ciudad / Estado</label><input class="input" id="nc-ciudad" placeholder="Ej. Culiacán, Sin." spellcheck="true"></div>
   <div class="input-group"><label class="input-label">Notas</label><textarea class="input" id="nc-no" rows="2" spellcheck="true"></textarea></div>
+  <div id="nc-solo-local">
   <div class="gps-card">
     <div style="font-weight:700;font-size:14px">📍 Ubicación GPS</div>
     <div id="nc-gps" class="gps-coords">Sin coordenadas</div>
     <button class="btn btn-full btn-sm" style="background:rgba(255,255,255,.2);color:#fff;border:1px solid rgba(255,255,255,.3);margin-top:10px" onclick="capturarGPSNuevoCliente()">📍 Capturar GPS</button>
   </div>
-  <div class="modal-sub">Primer piano</div>
+  </div>
+  <div class="modal-sub" id="nc-piano-tit">Primer piano</div>
+  <div id="nc-piano-hint" style="display:none;font-size:12px;color:var(--text2);margin:-4px 0 10px">Opcional para foráneos: déjalo sin marca si no aplica.</div>
   ${pianoFormFields('np')}
   <button class="btn btn-primary btn-full" onclick="crearCliente(${retPresup?'true':'false'})">Guardar cliente</button>`);
+}
+function _ncCategoria(){
+  const f=document.getElementById('nc-cat')?.value==='foraneo';
+  const show=(id,on)=>{const e=document.getElementById(id);if(e)e.style.display=on?'':'none';};
+  show('nc-ciudad-wrap',f);show('nc-solo-local',!f);show('nc-piano-hint',f);
+  const t=document.getElementById('nc-piano-tit');if(t)t.textContent=f?'Piano (opcional)':'Primer piano';
 }
 function capturarGPSNuevoCliente(){
   showToast('Obteniendo GPS…');
@@ -3885,8 +3918,9 @@ function crearCliente(retPresup=false){
   const nombre=document.getElementById('nc-n').value.trim();
   if(!nombre){showToast('El nombre es obligatorio');return;}
   const marca=document.getElementById('np-marca').value.trim();
-  if(!marca){showToast('Ingresa la marca del piano');return;}
-  const piano={id:nextId(),tipo:document.getElementById('np-tipo').value,subtipo:document.getElementById('np-subtipo').value,
+  const _foraneo=document.getElementById('nc-cat')?.value==='foraneo';
+  if(!marca&&!_foraneo){showToast('Ingresa la marca del piano');return;}
+  const piano=!marca?null:{id:nextId(),tipo:document.getElementById('np-tipo').value,subtipo:document.getElementById('np-subtipo').value,
     marca,modelo:document.getElementById('np-modelo').value.trim(),serie:document.getElementById('np-serie').value.trim(),
     color:document.getElementById('np-color').value.trim(),año:document.getElementById('np-año').value,
     estado:document.getElementById('np-estado').value,fallas:document.getElementById('np-fallas').value.trim(),
@@ -3897,8 +3931,9 @@ function crearCliente(retPresup=false){
     cp:(document.getElementById('nc-cp').value||'').trim(),
     razonSocial:(document.getElementById('nc-rs').value||'').trim(),
     tipoCliente:(document.getElementById('nc-tipo')&&document.getElementById('nc-tipo').value)||'particular',
-    lat:ncGPS.lat,lon:ncGPS.lon,pianos:[piano]};
-  state.clientes.push(c);saveState();closeModal();showToast('Cliente creado ✓');
+    lat:_foraneo?null:ncGPS.lat,lon:_foraneo?null:ncGPS.lon,pianos:piano?[piano]:[]};
+  if(_foraneo){c.categoria='foraneo';c.ciudad=(document.getElementById('nc-ciudad')?.value||'').trim();}
+  state.clientes.push(c);saveState();closeModal();showToast(_foraneo?'Cliente foráneo creado ✓':'Cliente creado ✓');
   if(window._volverNuevaCita){
     window._volverNuevaCita=false;
     window._ncaKeep=true; // preservar servicios ya agregados
@@ -5939,7 +5974,7 @@ function renderConfig(){
   </div>
   <div class="credits-block">
     <div class="credits-logo">🎹</div>
-    <div class="credits-app">PianoTune Pro v3.8.0</div>
+    <div class="credits-app">PianoTune Pro v3.8.1</div>
     <div class="credits-dev">Desarrollado por Sergio L. Ruiz Jones</div>
     <div class="credits-co">Pianos and Pianos — Mazatlán, Sin.</div>
   </div>`;
@@ -7241,7 +7276,7 @@ function renderInicioDT(){
       <!-- v3.8.0 — Seguimiento -->
       ${(()=>{const g=segGrupos();return `<div class="dt-panel" style="cursor:pointer;background:linear-gradient(135deg,#7c3aed,#a855f7);border:none;color:#fff" onclick="navigate('contactar')">
         <div style="padding:14px 16px"><div style="font-weight:700;font-size:15px">📞 Seguimiento</div>
-        <div style="font-size:12px;opacity:.92;margin-top:3px">${g.hoy.length} llamadas hoy · ${g.vencidos.length} vencidos · ${g.confirmar.length} por confirmar · ${g.sinfecha.length} sin fecha</div></div></div>`;})()}
+        <div style="font-size:12px;opacity:.92;margin-top:3px">${g.hoy.length} llamada${g.hoy.length===1?'':'s'} hoy · ${g.vencidos.length} vencidos · ${g.confirmar.length} por confirmar · ${g.sinfecha.length} sin fecha</div></div></div>`;})()}
 
       <!-- Revenue sparkline -->
       <div class="dt-panel">
