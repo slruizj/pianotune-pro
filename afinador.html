@@ -115,7 +115,7 @@ td{padding:6px;border-bottom:1px solid var(--border);font-variant-numeric:tabula
     <button class="btn btn-primary btn-full" id="btnStart">🎤 Iniciar</button>
     <button class="btn btn-ghost" id="btnFix" disabled>＋ Fijar lectura</button>
   </div>
-  <div class="hint">Toca una nota en el piano; cuando la lectura esté <b>estable</b>, usa "Fijar lectura" para anotarla en la tabla de abajo y comparar con Tune!It.</div>
+  <div class="hint">Toca una nota y déjala sonar. La lectura se queda retenida al apagarse la nota; "Fijar lectura" anota el promedio de toda la nota en la tabla de abajo y comparar con Tune!It.</div>
 </div>
 
 <div class="card">
@@ -144,12 +144,12 @@ td{padding:6px;border-bottom:1px solid var(--border);font-variant-numeric:tabula
     </div>
   </div>
   <table>
-    <thead><tr><th>#</th><th>Nota</th><th>Hz</th><th>Cents</th><th>Hora</th></tr></thead>
-    <tbody id="logBody"><tr><td colspan="5" style="color:var(--text3)">Sin lecturas</td></tr></tbody>
+    <thead><tr><th>#</th><th>Nota</th><th>Hz</th><th>Cents</th><th>±¢</th><th>Hora</th></tr></thead>
+    <tbody id="logBody"><tr><td colspan="6" style="color:var(--text3)">Sin lecturas</td></tr></tbody>
   </table>
 </div>
 
-<div class="foot">Afinador de diagnóstico v0.2 · Fase 1 (modo libre, solo fundamental)<br>No guarda mediciones todavía · no escribe en los datos de la app</div>
+<div class="foot">Afinador de diagnóstico v0.3 · Fase 1 (modo libre, solo fundamental)<br>No guarda mediciones todavía · no escribe en los datos de la app</div>
 
 <script>
 // ═════════════════════════════════════════════════════════
@@ -392,7 +392,7 @@ function highlightKey(n, cents){
 
 // ── Audio ──
 let ctx=null, stream=null, analyser=null, buf=null, timer=null, running=false, wake=null;
-let hist=[], lastReadAt=0, last=null;
+let ev=null, lastReadAt=0, last=null;
 
 async function start(){
   if(running) return;
@@ -415,7 +415,7 @@ async function start(){
   analyser.fftSize = 32768; analyser.smoothingTimeConstant = 0;  // ~0.7 s: graves necesitan ventana larga
   src.connect(analyser);
   buf = new Float32Array(analyser.fftSize);
-  running = true; hist = []; last = null;
+  running = true; ev = null; last = null;
   $('btnStart').textContent = '⏹ Detener'; $('btnStart').className = 'btn btn-stop btn-full';
   $('lvlTxt').textContent = 'Escuchando…';
   timer = setInterval(tick, 100);
@@ -442,32 +442,47 @@ function tick(){
   const rms = Math.sqrt(sum/recent.length);
   const db = 20*Math.log10(rms||1e-9);
   $('lvl').style.width = Math.max(0, Math.min(100, (db+70)/60*100)) + '%';
-  $('lvlTxt').textContent = rms<0.004 ? 'Silencio / muy bajo' : (db>-3 ? 'Saturando: aleja el micrófono' : 'Nivel: ' + db.toFixed(0) + ' dBFS');
+  $('lvlTxt').textContent = db < -72 ? 'Silencio' : db < -62 ? 'Muy bajo · acerca el teléfono (' + db.toFixed(0) + ' dBFS)'
+    : (db > -3 ? 'Saturando: aleja el micrófono' : 'Nivel: ' + db.toFixed(0) + ' dBFS');
 
   const now = performance.now();
-  if(rms < 0.004){ idle(now); return; }
+  if(db < -72){ idle(now); return; }
   const y = yin(recent, ctx.sampleRate, 24, 4500, 0.15);
-  if(!y || y.conf < 0.75){ idle(now); return; }
+  if(!y || y.conf < 0.6){ idle(now); return; }
   // YIN identifica la nota; refine() mide el parcial con precisión de centésimas de cent.
   const r = refine(buf, ctx.sampleRate, y.freq);
-
+  if(r.snr < 8){ idle(now); return; }           // parcial no distinguible del ruido
   const k = freqToKey(r.freq, la4);
   if(k.n < 1 || k.n > 88){ idle(now); return; }
 
-  // Suavizado: mediana de las últimas 5 lecturas; se reinicia si salta de nota.
-  if(hist.length && Math.abs(k.nf - median(hist)) > 0.6) hist = [];
-  hist.push(k.nf); if(hist.length > 5) hist.shift();
-  const nf = median(hist), n = Math.round(nf), cents = 100*(nf-n);
-  const freq = la4*Math.pow(2,(nf-49)/12);
-  const spread = hist.length>=5 ? (Math.max(...hist)-Math.min(...hist))*100 : 99;
-  const stable = spread < 1.5;
+  // Evento de nota: acumula TODAS las lecturas mientras la nota suena.
+  // Nuevo evento si cambia de tecla (2 lecturas seguidas) o si se vuelve a golpear tras un silencio.
+  if(ev && k.n !== ev.n){ if(++ev.miss < 2) return; ev = null; }
+  if(!ev || now - ev.lastAt > 700) ev = { n: k.n, vals: [], miss: 0, src: r.src };
+  ev.vals.push(k.nf); ev.lastAt = now; ev.miss = 0; ev.src = r.src;
+  if(ev.vals.length > 200) ev.vals.shift();
 
-  last = {n, freq, cents, stable, src: r.src, at: now};
+  const lastN = ev.vals.slice(-5), nf = median(lastN);
+  const spread = lastN.length >= 4 ? (Math.max(...lastN.slice(-4)) - Math.min(...lastN.slice(-4)))*100 : 99;
+  last = { n: ev.n, freq: la4*Math.pow(2,(nf-49)/12), cents: 100*(nf-ev.n), stable: spread < 2, src: r.src, held: false };
   lastReadAt = now;
   render(last);
 }
+// Resumen del evento: descarta el ataque (primeras 2 lecturas) y toma la mediana.
+function evSummary(){
+  if(!ev || ev.vals.length < 3) return null;
+  const v = ev.vals.length > 5 ? ev.vals.slice(2) : ev.vals.slice();
+  const md = median(v), mean = v.reduce((a,b)=>a+b,0)/v.length;
+  const sd = 100*Math.sqrt(v.reduce((a,b)=>a+(b-mean)*(b-mean),0)/v.length);
+  return { n: ev.n, freq: la4*Math.pow(2,(md-49)/12), cents: 100*(md-ev.n), sd, count: v.length, src: ev.src };
+}
+// Sin señal válida: se RETIENE la lectura de la última nota (no se borra) hasta la siguiente nota.
 function idle(now){
-  if(last && now - lastReadAt > 1200){ $('meter').classList.add('dim'); $('btnFix').disabled = true; hist = []; }
+  if(!ev || now - ev.lastAt < 400 || (last && last.held)) return;
+  const s = evSummary();
+  if(!s){ $('meter').classList.add('dim'); $('btnFix').disabled = true; return; }
+  last = { n: s.n, freq: s.freq, cents: s.cents, stable: s.sd < 2, src: s.src, held: true, sd: s.sd, count: s.count };
+  render(last);
 }
 function render(r){
   const nm = keyNames(r.n), col = colorCents(r.cents);
@@ -480,34 +495,41 @@ function render(r){
   $('needle').style.left = (50 + c) + '%'; $('needle').style.background = col;
   $('hz').textContent = r.freq.toFixed(2);
   $('hzT').textContent = keyFreq(r.n, la4).toFixed(2);
-  $('stab').textContent = (r.stable ? 'estable ●' : 'midiendo…') + (r.src==='P2' ? ' · parcial 2÷2' : '');
-  $('stab').style.color = r.stable ? '#4ade80' : '#fbbf24';
-  $('btnFix').disabled = !r.stable;
+  const p2 = r.src==='P2' ? ' · P2÷2' : '';
+  if(r.held){
+    $('stab').textContent = 'retenida ±' + r.sd.toFixed(1) + '¢' + p2;
+    $('stab').style.color = r.sd < 2 ? '#93c5fd' : '#fbbf24';
+  }else{
+    $('stab').textContent = (r.stable ? 'estable ●' : 'midiendo…') + p2;
+    $('stab').style.color = r.stable ? '#4ade80' : '#fbbf24';
+  }
+  $('btnFix').disabled = !(ev && ev.vals.length >= 3);
   highlightKey(r.n, r.cents);
 }
 
 // ── Registro de lecturas fijadas (solo en memoria, no se guarda) ──
 const log = [];
 function fix(){
-  if(!last || !last.stable) return;
+  const s = evSummary();
+  if(!s) return;
   const d = new Date();
-  log.push({n:last.n, hz:last.freq, cents:last.cents,
+  log.push({n:s.n, hz:s.freq, cents:s.cents, sd:s.sd, count:s.count, src:s.src,
     t: String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')+':'+String(d.getSeconds()).padStart(2,'0')});
   renderLog();
 }
 function renderLog(){
   const tb = $('logBody');
-  if(!log.length){ tb.innerHTML = '<tr><td colspan="5" style="color:var(--text3)">Sin lecturas</td></tr>'; return; }
+  if(!log.length){ tb.innerHTML = '<tr><td colspan="6" style="color:var(--text3)">Sin lecturas</td></tr>'; return; }
   tb.innerHTML = log.map((r,i)=>{
     const cls = Math.abs(r.cents)<=2 ? 'c-ok' : (r.cents<0 ? 'c-flat' : 'c-sharp');
-    return `<tr><td>${i+1}</td><td>${keyNames(r.n).en}</td><td>${r.hz.toFixed(2)}</td><td class="${cls}">${r.cents>=0?'+':'−'}${Math.abs(r.cents).toFixed(1)}</td><td>${r.t}</td></tr>`;
+    return `<tr><td>${i+1}</td><td>${keyNames(r.n).en}${r.src==='P2'?'*':''}</td><td>${r.hz.toFixed(2)}</td><td class="${cls}">${r.cents>=0?'+':'−'}${Math.abs(r.cents).toFixed(1)}</td><td>${r.sd.toFixed(1)}</td><td>${r.t}</td></tr>`;
   }).join('');
 }
 function copyCsv(){
   if(!log.length) return;
-  const csv = 'tecla,nota,hz,cents,hora\n' + log.map(r=>[r.n,keyNames(r.n).en,r.hz.toFixed(2),r.cents.toFixed(1),r.t].join(',')).join('\n');
+  const csv = 'tecla,nota,hz,cents,dispersion_cents,lecturas,parcial,hora\n' + log.map(r=>[r.n,keyNames(r.n).en,r.hz.toFixed(3),r.cents.toFixed(2),r.sd.toFixed(2),r.count,r.src,r.t].join(',')).join('\n');
   (navigator.clipboard ? navigator.clipboard.writeText(csv) : Promise.reject()).then(
-    ()=>msg(''), ()=>msg('No se pudo copiar automáticamente.'));
+    ()=>msg('✓ CSV copiado (' + log.length + ' lecturas)'), ()=>msg('No se pudo copiar automáticamente.'));
 }
 
 // ── Inicio ──
