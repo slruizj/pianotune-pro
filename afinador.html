@@ -42,6 +42,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .hz-row b{font-size:15px;font-variant-numeric:tabular-nums}
 .level{height:6px;background:var(--dark2);border-radius:3px;margin-top:12px;overflow:hidden}
 #lvl{height:100%;width:0;background:#38bdf8;transition:width .08s linear}
+#parts{font-size:12px;color:#94a3b8;text-align:center;margin:8px 0 2px;font-variant-numeric:tabular-nums;letter-spacing:.2px}
 #lvlTxt{font-size:11px;color:#94a3b8;margin-top:4px;text-align:center}
 .dim #noteName,.dim #cents{color:#475569!important}
 .dim #needle{background:#334155!important}
@@ -106,6 +107,7 @@ td{padding:6px;border-bottom:1px solid var(--border);font-variant-numeric:tabula
     <div><small>Objetivo</small><b id="hzT">—</b></div>
     <div><small>Lectura</small><b id="stab">—</b></div>
   </div>
+  <div id="parts">&nbsp;</div>
   <div class="level"><div id="lvl"></div></div>
   <div id="lvlTxt">Micrófono apagado</div>
 </section>
@@ -149,7 +151,7 @@ td{padding:6px;border-bottom:1px solid var(--border);font-variant-numeric:tabula
   </table>
 </div>
 
-<div class="foot">Afinador de diagnóstico v0.3 · Fase 1 (modo libre, solo fundamental)<br>No guarda mediciones todavía · no escribe en los datos de la app</div>
+<div class="foot">Afinador de diagnóstico v0.4 · Fase 1 (modo libre, solo fundamental)<br>No guarda mediciones todavía · no escribe en los datos de la app</div>
 
 <script>
 // ═════════════════════════════════════════════════════════
@@ -270,6 +272,25 @@ function refine(buf, sr, fc){
   // teléfono), se usa parcial 2 ÷ 2 (≈ +0.5 ¢ por inarmonicidad; se marca 'P2').
   if(snr2 >= 10 && (snr1 < 10 || p1.mag < 0.05*p2.mag)) return { freq: p2.f/2, src: 'P2', snr: snr2 };
   return { freq: p1.f, src: 'P1', snr: snr1 };
+}
+
+// Parciales 2..4 a partir del parcial 1 ya refinado (f1). Devuelve [{n, f}] (null si no se distingue).
+// Busca ±45 ¢ alrededor de n·f1: cubre la inarmonicidad típica de un piano.
+function partials(buf, sr, f1, maxN){
+  const N = winLen(f1, sr, buf.length), off = buf.length - N, out = [];
+  for(let n=2; n<=maxN; n++){
+    if(n*f1 > sr*0.45){ out.push(null); continue; }
+    const pk = peakNear(buf, off, N, sr, n*f1, 45);
+    const snr = pk.mag/(noiseNear(buf, off, N, sr, pk.f) || 1e-12);
+    out.push(snr >= 8 ? { n, f: pk.f } : null);
+  }
+  return out;
+}
+// Coeficiente de inarmonicidad: fn = n·f0·√(1+B·n²)  →  B = (r²−1)/(n²−r²), r = fn/(n·f1)·√(1+B) ≈ fn/(n·f1)
+function inharmB(f1, pn){
+  const est = [];
+  for(const p of pn){ if(!p) continue; const r2 = Math.pow(p.f/(p.n*f1), 2); const B = (r2-1)/(p.n*p.n - r2); if(B > -0.0005 && B < 0.02) est.push(B); }
+  return est.length ? median(est) : null;
 }
 
 function median(a){
@@ -458,9 +479,14 @@ function tick(){
   // Evento de nota: acumula TODAS las lecturas mientras la nota suena.
   // Nuevo evento si cambia de tecla (2 lecturas seguidas) o si se vuelve a golpear tras un silencio.
   if(ev && k.n !== ev.n){ if(++ev.miss < 2) return; ev = null; }
-  if(!ev || now - ev.lastAt > 700) ev = { n: k.n, vals: [], miss: 0, src: r.src };
+  if(!ev || now - ev.lastAt > 700) ev = { n: k.n, vals: [], miss: 0, src: r.src, pc: {2:[],3:[],4:[]}, B: [] };
   ev.vals.push(k.nf); ev.lastAt = now; ev.miss = 0; ev.src = r.src;
-  if(ev.vals.length > 200) ev.vals.shift();
+  if(r.src === 'P1'){
+    const pn = partials(buf, ctx.sampleRate, r.freq, 4);
+    pn.forEach((p,i)=>{ if(p) ev.pc[i+2].push(keyFloat(p.f/p.n, la4)); });
+    const B = inharmB(r.freq, pn); if(B !== null) ev.B.push(B);
+  }
+  if(ev.vals.length > 200){ ev.vals.shift(); for(const k2 of [2,3,4]) if(ev.pc[k2].length > 200) ev.pc[k2].shift(); if(ev.B.length > 200) ev.B.shift(); }
 
   const lastN = ev.vals.slice(-5), nf = median(lastN);
   const spread = lastN.length >= 4 ? (Math.max(...lastN.slice(-4)) - Math.min(...lastN.slice(-4)))*100 : 99;
@@ -474,7 +500,10 @@ function evSummary(){
   const v = ev.vals.length > 5 ? ev.vals.slice(2) : ev.vals.slice();
   const md = median(v), mean = v.reduce((a,b)=>a+b,0)/v.length;
   const sd = 100*Math.sqrt(v.reduce((a,b)=>a+(b-mean)*(b-mean),0)/v.length);
-  return { n: ev.n, freq: la4*Math.pow(2,(md-49)/12), cents: 100*(md-ev.n), sd, count: v.length, src: ev.src };
+  const pc = {};
+  for(const k2 of [2,3,4]){ const a = ev.pc[k2]; pc[k2] = a.length >= 3 ? 100*(median(a.length > 5 ? a.slice(2) : a) - ev.n) : null; }
+  const B = ev.B.length >= 3 ? median(ev.B) : null;
+  return { n: ev.n, freq: la4*Math.pow(2,(md-49)/12), cents: 100*(md-ev.n), sd, count: v.length, src: ev.src, pc, B };
 }
 // Sin señal válida: se RETIENE la lectura de la última nota (no se borra) hasta la siguiente nota.
 function idle(now){
@@ -504,6 +533,9 @@ function render(r){
     $('stab').style.color = r.stable ? '#4ade80' : '#fbbf24';
   }
   $('btnFix').disabled = !(ev && ev.vals.length >= 3);
+  const s = evSummary();
+  const fc = v => v===null ? '—' : (v>=0?'+':'−') + Math.abs(v).toFixed(1);
+  $('parts').textContent = s ? `P2/2 ${fc(s.pc[2])} · P3/3 ${fc(s.pc[3])} · P4/4 ${fc(s.pc[4])} ¢` + (s.B!==null ? ` · B ${s.B.toFixed(5)}` : '') : '\u00a0';
   highlightKey(r.n, r.cents);
 }
 
@@ -513,7 +545,7 @@ function fix(){
   const s = evSummary();
   if(!s) return;
   const d = new Date();
-  log.push({n:s.n, hz:s.freq, cents:s.cents, sd:s.sd, count:s.count, src:s.src,
+  log.push({n:s.n, hz:s.freq, cents:s.cents, sd:s.sd, count:s.count, src:s.src, pc:s.pc, B:s.B,
     t: String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')+':'+String(d.getSeconds()).padStart(2,'0')});
   renderLog();
 }
@@ -527,7 +559,8 @@ function renderLog(){
 }
 function copyCsv(){
   if(!log.length) return;
-  const csv = 'tecla,nota,hz,cents,dispersion_cents,lecturas,parcial,hora\n' + log.map(r=>[r.n,keyNames(r.n).en,r.hz.toFixed(3),r.cents.toFixed(2),r.sd.toFixed(2),r.count,r.src,r.t].join(',')).join('\n');
+  const f2 = v => v===null || v===undefined ? '' : v.toFixed(2);
+  const csv = 'tecla,nota,hz,cents_P1,P2/2,P3/3,P4/4,B,dispersion,lecturas,parcial,hora\n' + log.map(r=>[r.n,keyNames(r.n).en,r.hz.toFixed(3),r.cents.toFixed(2),f2(r.pc[2]),f2(r.pc[3]),f2(r.pc[4]),r.B===null?'':r.B.toFixed(5),r.sd.toFixed(2),r.count,r.src,r.t].join(',')).join('\n');
   (navigator.clipboard ? navigator.clipboard.writeText(csv) : Promise.reject()).then(
     ()=>msg('✓ CSV copiado (' + log.length + ' lecturas)'), ()=>msg('No se pudo copiar automáticamente.'));
 }
