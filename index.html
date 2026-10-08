@@ -305,7 +305,7 @@ body.kawaii .cli-sin-tel{background:#f7c9dc!important}
     ☁️ <span id="dt-sync-txt">Listo</span>
   </div>
   <div style="padding:10px 16px 14px">
-    <div style="color:rgba(255,255,255,.35);font-size:10px;font-weight:600;letter-spacing:.4px">PianoTune Pro v3.8.3</div>
+    <div style="color:rgba(255,255,255,.35);font-size:10px;font-weight:600;letter-spacing:.4px">PianoTune Pro v3.8.4</div>
   </div>
 </div>
 
@@ -2975,7 +2975,7 @@ async function renderInicio(){
         ${perfAvatar}
         <div><div class="page-title">Hola, ${tec.nombre||'Técnico'}</div>
         <div class="page-sub">${new Date().toLocaleDateString('es-MX',{weekday:'long',day:'numeric',month:'long'})}</div>
-        <div style="font-size:10px;color:var(--text3);margin-top:1px;letter-spacing:.3px">PianoTune Pro v3.8.3</div></div>
+        <div style="font-size:10px;color:var(--text3);margin-top:1px;letter-spacing:.3px">PianoTune Pro v3.8.4</div></div>
       </div>
       <button class="btn btn-ghost btn-xs" onclick="navigate('config')">⚙ Config</button>
     </div>
@@ -4006,11 +4006,14 @@ function guardarEdicionProspecto(id){
 }
 
 // ══ SCREEN: CLIENTES ══
+// v3.8.4 — búsqueda sin acentos y que conserva el foco al escribir
+function _bq(s){return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();}
+function _bqFoco(id){const e=document.getElementById(id);if(e){e.focus();const n=e.value.length;try{e.setSelectionRange(n,n);}catch(_){}}}
 let cliSearch='';
 let cliCat='todos'; // v3.8.1 — filtro Locales / Foráneos
 function renderClientes(){
-  const _q=cliSearch.toLowerCase(),_qd=cliSearch.replace(/\D/g,'');
-  const f=state.clientes.filter(c=>c.nombre.toLowerCase().includes(_q)||(c.pianos||[]).some(p=>(p.marca||'').toLowerCase().includes(_q))||(_qd.length>=3&&_telDigitos(c.telefono).includes(_qd)));
+  const _q=_bq(cliSearch),_qd=cliSearch.replace(/\D/g,'');
+  const f=state.clientes.filter(c=>!_q||_bq(c.nombre).includes(_q)||_bq(c.ciudad).includes(_q)||_bq(c.direccion).includes(_q)||(c.pianos||[]).some(p=>_bq((p.marca||'')+' '+(p.modelo||'')).includes(_q))||(_qd.length>=3&&_telDigitos(c.telefono).includes(_qd)));
   const _sinTel=state.clientes.filter(c=>!_telDigitos(c.telefono)).length;
   const _nFor=state.clientes.filter(esForaneo).length;
   const f2=f.filter(c=>cliCat==='todos'||(cliCat==='foraneo'?esForaneo(c):!esForaneo(c)));
@@ -4018,7 +4021,8 @@ function renderClientes(){
   <div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px"><div><div class="page-title">Clientes</div><div class="page-sub">${state.clientes.length} clientes · ${state.clientes.reduce((s,c)=>s+c.pianos.length,0)} pianos${_sinTel?` · <span style="color:#c2185b">${_sinTel} sin teléfono</span>`:''}</div></div><button class="btn btn-ghost btn-xs" style="margin-top:4px;white-space:nowrap" onclick="impModalInicio()">📥 Importar</button></div>
   <div class="search-bar" style="margin-top:8px">
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-    <input class="search-input" placeholder="Buscar por nombre o marca…" value="${cliSearch}" oninput="cliSearch=this.value;renderClientes()">
+    <input id="cli-search" class="search-input" placeholder="Buscar nombre, teléfono, marca o ciudad…" value="${_esc(cliSearch)}" oninput="cliSearch=this.value;renderClientes();_bqFoco('cli-search')">
+    ${cliSearch?`<button class="btn btn-ghost btn-xs" style="margin-left:4px" onclick="cliSearch='';renderClientes()">✕</button>`:''}
   </div>
   ${_nFor?`<div style="display:flex;gap:6px;padding:0 16px 6px">${[['todos','Todos',state.clientes.length],['local','🏠 Locales',state.clientes.length-_nFor],['foraneo','🚚 Foráneos',_nFor]].map(([k,l,n])=>`<button class="btn btn-xs ${cliCat===k?'btn-primary':'btn-ghost'}" onclick="cliCat='${k}';renderClientes()">${l} <b>${n}</b></button>`).join('')}</div>`:''}
   <div style="padding:0 16px">
@@ -5303,13 +5307,24 @@ function importarCatalogoInicial(){
 }
 
 // ══ SCREEN: PRESUPUESTO ══
+let presSearch='';
 function renderPresupuesto(){
+  const _q=_bq(presSearch),_qd=presSearch.replace(/\D/g,'');
+  const _lista=state.presupuestos.map(p=>{const cli=getCliente(p.clienteId);const piano=p.pianoId?getPiano(p.clienteId,p.pianoId):cli&&cli.pianos[0];const total=p.items.reduce((s,i)=>s+Number(i.precio),0);return{p,cli,piano,total};})
+    .filter(o=>!_q||_bq(o.cli&&o.cli.nombre).includes(_q)||_bq(o.piano?pianoLabel(o.piano):'').includes(_q)||o.p.items.some(i=>_bq(i.nombre).includes(_q))||_bq(fmtDate(o.p.fecha)).includes(_q)||_bq(o.p.fecha).includes(_q)||(_qd.length>=3&&String(Math.round(o.total)).includes(_qd)))
+    .sort((a,b)=>String(b.p.fecha||'').localeCompare(String(a.p.fecha||''))||b.p.id-a.p.id);
   document.getElementById('screen-presupuesto').innerHTML=`
-  <div class="page-header"><div class="page-title">Presupuestos</div><div class="page-sub">${state.presupuestos.length} generados</div></div>
+  <div class="page-header"><div class="page-title">Presupuestos</div><div class="page-sub">${_q?_lista.length+' de ':''}${state.presupuestos.length} generados</div></div>
+  <div class="search-bar" style="margin-top:8px">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <input id="pres-search" class="search-input" placeholder="Buscar cliente, piano, servicio o monto…" value="${_esc(presSearch)}" oninput="presSearch=this.value;renderPresupuesto();_bqFoco('pres-search')">
+    ${presSearch?`<button class="btn btn-ghost btn-xs" style="margin-left:4px" onclick="presSearch='';renderPresupuesto()">✕</button>`:''}
+  </div>
   <div style="padding:14px">
+  ${state.presupuestos.length>0&&_lista.length===0?`<div class="card" style="text-align:center;padding:24px;color:var(--text2)">Sin resultados para «${_esc(presSearch)}»</div>`:''}
   ${state.presupuestos.length===0
     ?`<div class="card" style="text-align:center;padding:32px;color:var(--text2)"><div style="font-size:40px">📄</div><div style="font-weight:600;margin-top:8px">Sin presupuestos</div><div style="font-size:13px;margin-top:4px">Toca + para crear uno</div></div>`
-    :state.presupuestos.map(p=>{const cli=getCliente(p.clienteId);const piano=p.pianoId?getPiano(p.clienteId,p.pianoId):cli&&cli.pianos[0];const total=p.items.reduce((s,i)=>s+Number(i.precio),0);
+    :_lista.map(({p,cli,piano,total})=>{
       return`<div class="card card-sm" style="margin:0 0 10px">
         <div style="display:flex;justify-content:space-between;align-items:flex-start">
           <div><div style="font-weight:700;font-size:15px">${cli?cli.nombre:'?'}</div>
@@ -5737,6 +5752,20 @@ function renderPbItems(){
   if(cont) cont.innerHTML=pbItemsHTML();
   if(totEl) totEl.textContent=pbTotalHTML();
 }
+function _syncCitasDePresupuesto(pp){
+  let n=0;
+  state.citas.forEach(c=>{
+    if(c.presupuestoId!==pp.id||_citaCerrada(c)||opEstado(c)==='cancelada')return;
+    const items=pp.items.map(i=>({nombre:i.nombre,precio:Number(i.precio)||0}));
+    if(!c.ordenServicio)c.ordenServicio={items:[],notas:'',fechaCierre:null};
+    c.ordenServicio.items=items;
+    c.servicio=items.length===1?items[0].nombre:`${items[0].nombre} +${items.length-1} más`;
+    c.precio=items.reduce((s,i)=>s+i.precio,0);
+    if(pp.pianoId)c.pianoId=pp.pianoId;
+    n++;
+  });
+  return n;
+}
 function guardarPresupuesto(editId){
   const clienteId=parseInt(document.getElementById('pb-c').value);
   const pianoId=parseInt(document.getElementById('pb-p').value)||null;
@@ -5748,8 +5777,10 @@ function guardarPresupuesto(editId){
     const idx=state.presupuestos.findIndex(x=>x.id===editId);
     if(idx>=0){
       state.presupuestos[idx]={...state.presupuestos[idx],clienteId,pianoId,items:[...pbItems]};
+      // v3.8.4 — la cita abierta (pendiente o en curso) vinculada a este presupuesto toma los cambios
+      const _nSync=_syncCitasDePresupuesto(state.presupuestos[idx]);
       saveState();closeModal();
-      showToast('✅ Presupuesto actualizado');
+      showToast(_nSync?'✅ Presupuesto y cita actualizados':'✅ Presupuesto actualizado');
       renderPresupuesto();
     }
     return;
@@ -6362,7 +6393,7 @@ function renderConfig(){
   </div>
   <div class="credits-block">
     <div class="credits-logo">🎹</div>
-    <div class="credits-app">PianoTune Pro v3.8.3</div>
+    <div class="credits-app">PianoTune Pro v3.8.4</div>
     <div class="credits-dev">Desarrollado por Sergio L. Ruiz Jones</div>
     <div class="credits-co">Pianos and Pianos — Mazatlán, Sin.</div>
   </div>`;
