@@ -106,7 +106,7 @@ body.kawaii .cli-sin-tel{background:#f7c9dc!important}
 .stat-label{font-size:11px;color:var(--text2);margin-top:2px}
 /* CALENDAR */
 .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;padding:0 14px}
-.cal-day{min-height:64px;display:flex;flex-direction:column;align-items:flex-start;padding:3px 3px 2px;border-radius:6px;font-size:12px;cursor:pointer;border:1px solid var(--border)}
+.cal-day{min-height:64px;display:flex;flex-direction:column;align-items:flex-start;padding:3px 3px 2px;border-radius:6px;font-size:12px;cursor:pointer;border:1px solid color-mix(in srgb,var(--border) 80%,#000)}
 .cal-day.today .cal-dn{background:var(--primary);color:#fff;border-radius:50%;font-weight:700}
 .cal-day.other-month{opacity:.35}
 .cal-dn{width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:11px;border-radius:50%}
@@ -193,6 +193,8 @@ body.kawaii .cli-sin-tel{background:#f7c9dc!important}
 /* CLIMA */
 .weather-widget{background:linear-gradient(135deg,#1565c0,#1e88e5);border-radius:var(--radius);padding:14px 16px;margin:0 16px 12px;color:#fff;display:flex;align-items:center;justify-content:space-between}
 /* SESSION */
+.fact-banner{background:linear-gradient(135deg,#b45309,#d97706);color:#fff;padding:12px 16px;margin:10px 16px;border-radius:var(--radius);cursor:pointer}
+.fact-banner.late{background:linear-gradient(135deg,#9f1239,#be123c)}
 .session-banner{background:linear-gradient(135deg,#0f3b9e,#1a56db);color:#fff;padding:14px 16px;margin:10px 16px;border-radius:var(--radius)}
 /* SETTINGS */
 .settings-row{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:var(--surface);border-bottom:1px solid var(--border)}
@@ -2678,6 +2680,8 @@ function estaFacturada(c){
   if(c.estado==='facturado')return true;
   return false;
 }
+// v3.9.2 — Próximas citas: solo los próximos 30 días (las recurrentes lejanas viven en la agenda y en la ficha del cliente)
+function _hoyMas(d){const x=new Date(_hoyISO()+'T00:00:00');x.setDate(x.getDate()+d);return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');}
 function opEstado(c){
   const e=c.estado;
   if(e==='pendiente')return'pendiente';
@@ -2693,15 +2697,24 @@ function etiquetaCita(c){
   if(op==='vencida')return'Vencida';
   if(op==='en_curso')return(c.estado==='pausado'||c.pausada)?'En curso (pausada)':'En curso';
   if(op==='cancelada')return'Cancelada';
-  if(c.estado==='pago_cero')return'Pago Cero';
+  if(c.estado==='pago_cero'){
+    if(estaFacturada(c))return'Cerrada · pago cero · facturada';
+    return c.archivada?'Cerrada · pago cero':'Pago cero · por clasificar';
+  }
   const fact=estaFacturada(c),ce=cobroEstado(c);
+  if(_citaFinalizada(c))return fact?'Cerrada':'Cerrada · sin factura';
   if(fact&&ce==='pagada')return'Cerrada';
   if(fact)return'Facturada · esperando pago';
   if(ce==='pagada')return'Pagada · sin factura';
   if(ce==='anticipo')return'Realizada · anticipo';
   return'Realizada · por cobrar';
 }
-function citaArchivada(c){return !!c.archivada||opEstado(c)==='cancelada'||c.estado==='pago_cero'||(opEstado(c)==='realizada'&&estaFacturada(c)&&saldoCita(c)<=0);}
+// v3.9.2 — "Cerrada" = realizada, sin saldo, y ya facturada o archivada sin factura (incluye pago cero)
+function _citaFinalizada(c){return opEstado(c)==='realizada'&&saldoCita(c)<=0&&(estaFacturada(c)||!!c.archivada);}
+function citaArchivada(c){return !!c.archivada||opEstado(c)==='cancelada'||(opEstado(c)==='realizada'&&estaFacturada(c)&&saldoCita(c)<=0);}
+// Servicios realizados que aún no se clasifican (por cobrar o por facturar/archivar; incluye pago cero)
+function _pendientesClasificar(){return state.citas.filter(c=>enPorCobrar(c)||enPorFacturar(c)).length;}
+function _refrescarPantalla(){try{navigate(currentScreen);}catch(e){}}
 function enPorCobrar(c){return opEstado(c)==='realizada'&&!c.archivada&&saldoCita(c)>0;}
 function enPorFacturar(c){return opEstado(c)==='realizada'&&!c.archivada&&saldoCita(c)<=0&&!estaFacturada(c);}
 const citaColor=c=>{
@@ -2710,7 +2723,7 @@ const citaColor=c=>{
   if(op==='vencida')return'red';
   if(op==='pendiente')return'blue';
   if(op==='en_curso')return'yellow';
-  return(estaFacturada(c)&&cobroEstado(c)==='pagada')?'green':'yellow';
+  return (_citaFinalizada(c)||(estaFacturada(c)&&cobroEstado(c)==='pagada'))?'green':'yellow';
 };
 const estadoLabel=c=>etiquetaCita(c);
 const pianoLabel=p=>p?`${p.marca} ${p.modelo} (${p.tipo})`:'';
@@ -3024,14 +3037,14 @@ async function renderInicio(){
     const pgs=c.cobro?.pagos||[];const forma=(pgs.length?pgs[pgs.length-1].forma:c.cobro?.formaPago)||'';
     return renderCard(c,`
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-      <span style="font-size:12px;color:var(--text2)">✅ Pagada${forma?' · '+forma:''}</span>
+      <span style="font-size:12px;color:var(--text2)">${total>0?'✅ Pagada'+(forma?' · '+forma:''):'⚪ Pago cero · por clasificar'}</span>
       <span style="font-weight:700;font-size:15px;color:var(--success)">${fmtMoney(total)}</span>
     </div>
     <div style="display:flex;gap:6px;flex-wrap:wrap">
       <button class="btn btn-success btn-sm" style="flex:1" onclick="modalFacturar(${c.id})">🧾 Emitir factura</button>
-      <button class="btn btn-ghost btn-xs" onclick="abrirPDF_CP(${c.id})">🧾 Comprobante</button>
-      <button class="btn btn-wa btn-xs" onclick="enviarComprobantePorWA(${c.id})">💬 WA</button>
-      <button class="btn btn-ghost btn-xs" style="color:var(--text3)" onclick="cerrarSinFactura(${c.id})">Archivar s/factura</button>
+      ${total>0?`<button class="btn btn-ghost btn-xs" onclick="abrirPDF_CP(${c.id})">🧾 Comprobante</button>
+      <button class="btn btn-wa btn-xs" onclick="enviarComprobantePorWA(${c.id})">💬 WA</button>`:''}
+      <button class="btn btn-ghost btn-xs" style="color:var(--text3)" onclick="cerrarSinFactura(${c.id})">${total>0?'Archivar s/factura':'Archivar'}</button>
     </div>`);
   }).join('');
 
@@ -3071,10 +3084,10 @@ async function renderInicio(){
         <div class="page-sub">${new Date().toLocaleDateString('es-MX',{weekday:'long',day:'numeric',month:'long'})}</div>
         <div style="font-size:10px;color:var(--text3);margin-top:1px;letter-spacing:.3px">PianoTune Pro v3.9.2</div></div>
       </div>
-      <div style="display:flex;gap:6px"><button class="btn btn-ghost btn-xs" onclick="setModoAuto(true)">🚗 Auto</button><button class="btn btn-ghost btn-xs" onclick="navigate('config')">⚙ Config</button></div>
+      <div style="display:flex;gap:6px">${_factBtn(false)}<button class="btn btn-ghost btn-xs" onclick="setModoAuto(true)">🚗 Auto</button><button class="btn btn-ghost btn-xs" onclick="navigate('config')">⚙ Config</button></div>
     </div>
   </div>
-  ${gBar}${sesBanner}
+  ${gBar}${sesBanner}${_factBanner()}
   <div style="margin:12px 16px 0">
     <div class="weather-widget" id="weather-widget">
       <div><div style="font-size:13px;opacity:.85">📍 Mazatlán, Sin.</div>
@@ -4228,7 +4241,7 @@ function _autoDetalleLlamada(i,ids){
 function renderInicioAuto(){
   const hoy=_hoyISO(),tec=state.tecnico||{};
   const enc=state.citas.filter(c=>opEstado(c)==='en_curso');
-  const pr=state.citas.filter(c=>opEstado(c)==='pendiente'&&c.fecha>=hoy).sort((a,b)=>(a.fecha+a.hora).localeCompare(b.fecha+b.hora)).slice(0,30);
+  const pr=state.citas.filter(c=>opEstado(c)==='pendiente'&&c.fecha>=hoy&&c.fecha<=_hoyMas(30)).sort((a,b)=>(a.fecha+a.hora).localeCompare(b.fecha+b.hora)).slice(0,30);
   const ve=state.citas.filter(c=>opEstado(c)==='vencida').sort((a,b)=>b.fecha.localeCompare(a.fecha)).slice(0,5);
   const g=segGrupos(),calls=g.hoy;
   const idsC=enc.concat(pr,ve).map(c=>c.id),idsL=calls.map(i=>i.cli.id);
@@ -4257,7 +4270,7 @@ function renderInicioAuto(){
   document.getElementById('screen-inicio').innerHTML=`
   <div class="auto-top"><span class="t">Hola, ${_esc((tec.nombre||'Técnico').split(' ')[0])}</span><span class="s">${new Date().toLocaleDateString('es-MX',{weekday:'short',day:'numeric',month:'short'})}</span>
     <span id="sync-bar" class="auto-chip" style="display:inline-flex;align-items:center;gap:6px"></span><span class="auto-chip" id="weather-temp">☁️</span><span class="sp"></span>
-    <button class="auto-chip dark" onclick="setModoAuto(false)">🚗 Auto</button><button class="auto-chip" onclick="navigate('config')">⚙ Config</button></div>
+    ${_factBtn(true)}<button class="auto-chip dark" onclick="setModoAuto(false)">🚗 Auto</button><button class="auto-chip" onclick="navigate('config')">⚙ Config</button></div>
   <div class="auto-md"><div class="l"><div class="auto-tabs"><button class="${autoTab==='citas'?'on':''}" onclick="autoTab='citas';autoSel=null;renderInicio()">📅 Citas</button><button class="${autoTab==='llamadas'?'on':''}" onclick="autoTab='llamadas';autoSel=null;renderInicio()">📞 Llamadas ${calls.length}</button></div>${izq}</div><div class="r">${der}</div></div>`;
   setTimeout(updateSyncBar,80);
   fetchWeather().then(w=>{if(!w)return;const te=document.getElementById('weather-temp');if(te)te.textContent=w.icon+' '+w.temp+'°';});
@@ -4817,9 +4830,11 @@ function showModalDetalleCita(id){
       }else{
         if(!fact){
           html+=`<button class="btn btn-success btn-full" onclick="modalFacturar(${id})">🧾 Emitir factura</button>`;
-          html+=`<button class="btn btn-outline btn-full" style="margin-top:6px" onclick="abrirPDF_CP(${id})">🧾 Comprobante</button>`;
-          html+=`<button class="btn btn-wa btn-full" style="margin-top:6px" onclick="enviarComprobantePorWA(${id})">💬 Enviar comprobante WA</button>`;
-          html+=`<button class="btn btn-ghost btn-full" style="margin-top:6px;color:var(--text3)" onclick="cerrarSinFactura(${id})">Archivar sin factura</button>`;
+          if(total>0){
+            html+=`<button class="btn btn-outline btn-full" style="margin-top:6px" onclick="abrirPDF_CP(${id})">🧾 Comprobante</button>`;
+            html+=`<button class="btn btn-wa btn-full" style="margin-top:6px" onclick="enviarComprobantePorWA(${id})">💬 Enviar comprobante WA</button>`;
+          }
+          if(!c.archivada)html+=`<button class="btn btn-ghost btn-full" style="margin-top:6px;color:var(--text3)" onclick="cerrarSinFactura(${id})">${total>0?'Archivar sin factura':'Archivar (pago cero)'}</button>`;
           html+=`<button class="btn btn-ghost btn-full" style="margin-top:8px;color:var(--danger)" onclick="eliminarCitaConConfirm(${id})">🗑 Eliminar cita</button>`;
         }else{
           html+=`<button class="btn btn-outline btn-full" onclick="abrirPDF_CP(${id})">🧾 Comprobante</button>`;
@@ -6251,8 +6266,8 @@ let _filtH='todos';
 function renderHistorial(){
   const pills=[
     {k:'todos',label:'Todos'},
-    {k:'cobrar',label:'Por cobrar'},
-    {k:'facturar',label:'Por facturar'},
+    {k:'cobrar',label:'Por cobrar'+(state.citas.filter(enPorCobrar).length?' ('+state.citas.filter(enPorCobrar).length+')':'')},
+    {k:'facturar',label:'Por facturar / archivar'+(state.citas.filter(enPorFacturar).length?' ('+state.citas.filter(enPorFacturar).length+')':'')},
     {k:'cerradas',label:'Cerradas'},
     {k:'canceladas',label:'Canceladas'},
   ];
@@ -6282,12 +6297,107 @@ function renderHistorial(){
   document.getElementById('screen-historial').innerHTML=`
   <div class="page-header">
     <div class="page-title">📋 Historial de servicios</div>
-    <div class="page-sub">${citas.length} servicios · ${fmtMoney(totalMostrado)} cobrado</div>
+    <div class="page-sub">${citas.length} servicios · ${fmtMoney(totalMostrado)} cobrado${_pendientesClasificar()?` · <b style="color:var(--warning)">${_pendientesClasificar()} por clasificar</b>`:''}</div>
   </div>
   <div class="segment" style="overflow-x:auto;padding:4px 16px 8px;gap:6px">
     ${pills.map(p=>`<button class="seg-btn${_filtH===p.k?' active':''}" onclick="_filtH='${p.k}';renderHistorial()">${p.label}</button>`).join('')}
   </div>
   ${lista}`;
+}
+// ══ FACTURACIÓN v3.9.2 — transferencias al día · efectivo semanal · registro por receptor ══
+let _factTab='transf',_factSel=null;
+function _formaCobro(c){const p=(c.cobro&&c.cobro.pagos)||[];return (p.length?p[p.length-1].forma:(c.cobro&&c.cobro.formaPago))||'';}
+function _fechaPagoC(c){const p=(c.cobro&&c.cobro.pagos)||[];return (p.length?p[p.length-1].fecha:(c.cobro&&c.cobro.fechaCobro))||c.fecha;}
+function _semIni(iso){const d=new Date(iso+'T00:00:00');d.setDate(d.getDate()-((d.getDay()+6)%7));return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function _diasDesde(iso){return Math.round((new Date(_hoyISO()+'T00:00:00')-new Date(iso+'T00:00:00'))/86400000);}
+function factPend(){
+  const l=state.citas.filter(c=>enPorFacturar(c)&&cobroTotal(c)>0);
+  const o=(a,b)=>_fechaPagoC(a).localeCompare(_fechaPagoC(b));
+  return{transf:l.filter(c=>_formaCobro(c)!=='efectivo').sort(o),efec:l.filter(c=>_formaCobro(c)==='efectivo').sort(o)};
+}
+function _factBanner(){
+  const p=factPend();if(!p.transf.length)return'';
+  const atras=p.transf.some(c=>_diasDesde(_fechaPagoC(c))>0);
+  const tot=p.transf.reduce((s,c)=>s+cobroTotal(c),0);
+  return`<div class="fact-banner${atras?' late':''}" onclick="abrirFacturacion('transf')">
+    <div style="font-weight:700;font-size:14px">🧾 ${p.transf.length} transferencia${p.transf.length>1?'s':''} por facturar${atras?' · hay de días anteriores':' hoy'}</div>
+    <div style="font-size:12px;opacity:.9;margin-top:2px">${fmtMoney(tot)} · toca para elegir Público en general o RFC del cliente</div></div>`;
+}
+function _factBtn(auto){
+  const p=factPend(),n=p.transf.length+p.efec.length;
+  if(auto)return`<button class="auto-chip" style="${p.transf.length?'background:#d97706;color:#fff;border-color:#d97706':''}" onclick="abrirFacturacion()">🧾${n?' '+n:''}</button>`;
+  return`<button class="btn btn-ghost btn-xs" style="${p.transf.length?'border-color:#d97706;color:#b45309;font-weight:700':''}" onclick="abrirFacturacion()">🧾${n?' '+n:''}</button>`;
+}
+function _factRender(html){const mb=document.getElementById('modal-body');if(mb&&_modalAbierto())mb.innerHTML=html;else openModal(html);}
+function abrirFacturacion(tab){
+  if(tab)_factTab=tab;
+  const p=factPend();
+  const tabs=[['transf',`Transferencias (${p.transf.length})`],['efec',`Efectivo (${p.efec.length})`],['hechas','Facturadas']];
+  const head=`<div class="modal-title">🧾 Facturación</div>
+  <div style="display:flex;gap:6px;margin-bottom:10px">${tabs.map(t=>`<button class="seg-btn${_factTab===t[0]?' active':''}" style="padding:8px 4px;font-size:12px" onclick="abrirFacturacion('${t[0]}')">${t[1]}</button>`).join('')}</div>`;
+  let body='';
+  const fila=(c,acc)=>{const cli=getCliente(c.clienteId),fp=_fechaPagoC(c),d=_diasDesde(fp);
+    return`<div style="padding:10px 0;border-bottom:1px solid var(--border)"><div style="display:flex;justify-content:space-between;gap:8px"><div style="min-width:0"><div style="font-weight:600;font-size:14px">${_esc(cli?cli.nombre:'?')}</div>
+    <div style="font-size:11px;color:var(--text2)">${_esc(c.servicio||'')} · pagó ${fmtDate(fp)} · ${_esc(_formaCobro(c)||'')}${d>0&&_factTab==='transf'?` · <b style="color:var(--danger)">hace ${d} día${d>1?'s':''}</b>`:''}</div></div>
+    <b style="color:var(--success);white-space:nowrap">${fmtMoney(cobroTotal(c))}</b></div>${acc||''}</div>`;};
+  if(_factTab==='transf'){
+    body=p.transf.length?`<div style="font-size:12px;color:var(--text2);margin-bottom:4px">La factura se emite en Aspel; aquí queda el registro de a quién se facturó.</div>`+p.transf.map(c=>{const cli=getCliente(c.clienteId);
+      return fila(c,`<div style="display:flex;gap:6px;margin-top:8px"><button class="btn btn-primary btn-sm" style="flex:1" onclick="_factMarcar(${c.id},'publico_general')">👥 Público en general</button>
+      <button class="btn btn-ghost btn-sm" style="flex:1" ${cli&&cli.rfc?'':'disabled style="opacity:.4"'} onclick="_factMarcar(${c.id},'cliente')">🪪 ${cli&&cli.rfc?'RFC '+_esc(cli.rfc):'Sin RFC'}</button></div>`);}).join(''):'<div style="padding:24px;text-align:center;color:var(--text3);font-size:14px">✅ Sin transferencias por facturar</div>';
+  }else if(_factTab==='efec'){
+    if(!_factSel)_factSel=new Set(p.efec.map(c=>c.id));
+    [..._factSel].forEach(id=>{if(!p.efec.some(c=>c.id===id))_factSel.delete(id);});
+    const hoySem=_semIni(_hoyISO());const gr={};
+    p.efec.forEach(c=>{const k=_semIni(_fechaPagoC(c));(gr[k]=gr[k]||[]).push(c);});
+    const ks=Object.keys(gr).sort();
+    const sel=p.efec.filter(c=>_factSel.has(c.id)),tot=sel.reduce((s,c)=>s+cobroTotal(c),0);
+    body=p.efec.length?ks.map(k=>{const f=new Date(k+'T00:00:00');const f2=new Date(f);f2.setDate(f2.getDate()+6);
+      const lbl=k===hoySem?'Esta semana':'⏳ Acumulado de la semana anterior';
+      return`<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:${k===hoySem?'var(--text2)':'var(--warning)'};margin:10px 0 2px">${lbl} · ${fmtDate(k)} al ${fmtDate(f2.toISOString().split('T')[0])}</div>`+
+      gr[k].map(c=>`<label style="display:flex;gap:10px;align-items:center;cursor:pointer"><input type="checkbox" ${_factSel.has(c.id)?'checked':''} onchange="_factToggle(${c.id})" style="width:20px;height:20px;flex-shrink:0"><div style="flex:1">${fila(c)}</div></label>`).join('');}).join('')+
+      `<div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;font-size:14px"><span>${sel.length} seleccionados</span><b>${fmtMoney(tot)}</b></div>
+      <button class="btn btn-primary btn-full" style="margin-top:8px" ${sel.length?'':'disabled'} onclick="_factLote()">🧾 Registrar factura (global o varios servicios)</button>`
+      :'<div style="padding:24px;text-align:center;color:var(--text3);font-size:14px">✅ Sin efectivo por facturar</div>';
+  }else{
+    const h=state.citas.filter(c=>estaFacturada(c)&&cobroTotal(c)>0).sort((a,b)=>((b.factura&&b.factura.fecha)||'').localeCompare((a.factura&&a.factura.fecha)||'')).slice(0,60);
+    const rec=c=>(c.factura&&c.factura.receptor)||(c.facturaInfo&&c.facturaInfo.tipoFactura)||'';
+    const pg=h.filter(c=>rec(c)!=='cliente'),rf=h.filter(c=>rec(c)==='cliente');
+    const sm=a=>a.reduce((s,c)=>s+cobroTotal(c),0);
+    body=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px"><div class="card" style="margin:0;background:var(--bg);text-align:center"><div style="font-size:11px;color:var(--text2)">👥 Público en general</div><b>${pg.length} · ${fmtMoney(sm(pg))}</b></div><div class="card" style="margin:0;background:var(--bg);text-align:center"><div style="font-size:11px;color:var(--text2)">🪪 RFC del cliente</div><b>${rf.length} · ${fmtMoney(sm(rf))}</b></div></div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:4px">Últimas ${h.length} facturadas</div>`+(h.length?h.map(c=>fila(c,`<div style="font-size:11px;color:var(--text2);margin-top:3px">${rec(c)==='cliente'?'🪪 RFC del cliente':'👥 Público en general'} · ${fmtDate((c.factura&&c.factura.fecha)||'')}${c.factura&&c.factura.folio?' · folio '+_esc(c.factura.folio):''}</div>`)).join(''):'<div style="padding:20px;text-align:center;color:var(--text3)">Aún no hay facturas registradas</div>');
+  }
+  _factRender(head+`<div style="max-height:62vh;overflow-y:auto">${body}</div>`);
+}
+function _factToggle(id){if(!_factSel)_factSel=new Set();_factSel.has(id)?_factSel.delete(id):_factSel.add(id);abrirFacturacion('efec');}
+function _factAplicar(c,receptor,fecha,folio,lote){
+  c.factura={facturado:true,tipoComprobante:'PUE',receptor,fecha,folio:folio||'',lote:lote||''};
+  c.facturaInfo={fechaFacturado:fecha,tipoFactura:receptor};
+}
+function _factMarcar(id,receptor){
+  const c=state.citas.find(x=>x.id===id);if(!c)return;
+  _factAplicar(c,receptor,_hoyISO(),'','');
+  saveState();showToast(receptor==='cliente'?'Registrada a RFC del cliente ✓':'Registrada a Público en general ✓');
+  abrirFacturacion('transf');try{renderScreen(currentScreen);}catch(e){}
+}
+function _factLote(){
+  const ids=[..._factSel];if(!ids.length)return;
+  const tot=state.citas.filter(c=>ids.includes(c.id)).reduce((s,c)=>s+cobroTotal(c),0);
+  _factRender(`<div class="modal-title">🧾 Factura de efectivo</div>
+  <div class="card" style="margin:0 0 12px;background:var(--bg);font-size:13px"><div style="display:flex;justify-content:space-between"><span>${ids.length} servicios</span><b>${fmtMoney(tot)}</b></div></div>
+  <div class="input-group"><label class="input-label">Fecha de la factura</label><input type="date" class="input" id="fl-fecha" value="${_hoyISO()}"></div>
+  <div class="input-group"><label class="input-label">Fecha del depósito en banco (opcional)</label><input type="date" class="input" id="fl-dep" value="${_hoyISO()}"></div>
+  <div class="input-group"><label class="input-label">Folio de la factura (opcional)</label><input class="input" id="fl-folio" placeholder="Folio de Aspel"></div>
+  <div style="font-size:12px;color:var(--text2);margin-bottom:10px">Se registran como facturadas a Público en general (global o una factura con varios servicios).</div>
+  <button class="btn btn-primary btn-full" onclick="_factLoteOk()">✓ Registrar</button>
+  <button class="btn btn-ghost btn-full" style="margin-top:8px" onclick="abrirFacturacion('efec')">← Volver</button>`);
+}
+function _factLoteOk(){
+  const ids=[..._factSel];const fecha=document.getElementById('fl-fecha').value||_hoyISO();
+  const dep=document.getElementById('fl-dep').value,folio=document.getElementById('fl-folio').value.trim();
+  const lote='L'+Date.now();
+  state.citas.filter(c=>ids.includes(c.id)).forEach(c=>{_factAplicar(c,'publico_general',fecha,folio,lote);if(dep){c.cobro=c.cobro||{};c.cobro.fechaDeposito=dep;}});
+  _factSel=null;saveState();showToast(ids.length+' servicios registrados ✓');
+  abrirFacturacion('hechas');try{renderScreen(currentScreen);}catch(e){}
 }
 // ══ NOTAS ══
 function getNotas(){if(!state.notas)state.notas=[];return state.notas;}
@@ -6644,8 +6754,9 @@ function renderConfig(){
 
   </details>
 
-  <div style="padding:4px 16px 12px">
-    <button class="btn btn-ghost btn-full" style="border:1.5px solid var(--border)" onclick="navigate('historial')">📋 Ver historial de servicios →</button>
+  <div onclick="navigate('historial')" style="padding:12px 16px;font-weight:700;font-size:14px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;background:var(--bg);border-top:1px solid var(--border);border-bottom:1px solid var(--border);margin-bottom:12px">
+    <span>📋 Historial de servicios</span>
+    <span style="display:flex;align-items:center;gap:8px">${_pendientesClasificar()>0?`<span style="font-size:11px;padding:2px 9px;border-radius:20px;background:var(--warning-light);color:var(--warning);font-weight:700">${_pendientesClasificar()} por clasificar</span>`:''}<span style="font-size:12px;color:var(--text3)">▶ Abrir</span></span>
   </div>
 
   <!-- v2.8.1 — sincronización real vía Apps Script -->
@@ -7091,7 +7202,6 @@ function modalRegistrarPago(citaId){
     <select class="input select" id="rp-forma">
       <option value="transferencia">💳 Transferencia bancaria</option>
       <option value="efectivo">💵 Efectivo</option>
-      <option value="deposito">🏦 Depósito</option>
       <option value="tarjeta">💳 Tarjeta</option>
     </select></div>
   <div class="input-group"><label class="input-label">Fecha de pago</label>
@@ -7233,14 +7343,15 @@ function confirmarFacturado(citaId){
   c.facturaInfo={fechaFacturado:c.factura.fecha,tipoFactura:c.factura.receptor};
   if(opEstado(c)!=='realizada')c.estado='realizada';
   saveState();closeModal();showToast('Factura registrada ✓');
+  _refrescarPantalla();
   setTimeout(()=>showModalDetalleCita(citaId),300);
 }
 
 function cerrarSinFactura(citaId){
-  if(!confirm('¿Cerrar sin emitir factura? Quedará archivada como pagada sin factura.'))return;
+  if(!confirm('¿Cerrar sin emitir factura? Quedará archivada (cerrada sin factura).'))return;
   const c=state.citas.find(x=>x.id===citaId);if(!c)return;
   c.archivada=true;
-  saveState();showToast('Archivada (sin factura) ✓');renderInicio();
+  saveState();closeModal();showToast('Archivada (sin factura) ✓');_refrescarPantalla();
 }
 
 // ── Enviar comprobante por WA ──
@@ -7786,7 +7897,7 @@ function renderInicioDT(){
 
   // ── Próximas citas ──
   const proximas=state.citas
-    .filter(c=>opEstado(c)==='pendiente'&&c.fecha>=hoy)
+    .filter(c=>opEstado(c)==='pendiente'&&c.fecha>=hoy&&c.fecha<=_hoyMas(30))
     .sort((a,b)=>a.fecha.localeCompare(b.fecha))
     .slice(0,8);
 
@@ -7854,7 +7965,7 @@ function renderInicioDT(){
       <div class="dt-kpi-lbl">⏳ Por cobrar</div>
       <div class="dt-kpi-sub">${porCobrarCitas.length} servicios</div>
     </div>
-    <div class="dt-kpi-card">
+    <div class="dt-kpi-card" style="cursor:pointer" onclick="abrirFacturacion()">
       <div class="dt-kpi-val" style="color:${porFacturarMonto>0?'var(--warning)':'var(--text3)'}">${fmtMoney(porFacturarMonto)}</div>
       <div class="dt-kpi-lbl">🧾 Por facturar</div>
       <div class="dt-kpi-sub">${porFacturarCitas.length} servicios</div>
