@@ -286,6 +286,80 @@ body.kawaii .cli-sin-tel{background:#f7c9dc!important}
 @media(min-width:1024px) and (max-width:1280px){
   .dt-kpi-grid{grid-template-columns:repeat(3,1fr)}
 }
+/* ══ v3.9.0 — flechas, orden y MODO AUTO (CarStream ~960×400) ══ */
+.chev-btn{width:40px;height:40px;border-radius:50%;background:var(--surface);border:1px solid var(--border);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;padding:0;flex:none}
+.chev-btn svg{width:20px;height:20px;stroke:var(--primary);fill:none;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+.chev-btn:disabled{opacity:.3;cursor:default}
+.navrow{display:flex;align-items:center;justify-content:space-between;margin:0 0 10px;font-size:12px;color:var(--text2)}
+.sortbar{display:flex;gap:6px;overflow-x:auto;padding:2px 16px 8px;scrollbar-width:none}
+.sortchip{white-space:nowrap;border:1px solid var(--border);background:var(--surface);color:var(--text);border-radius:16px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer}
+.sortchip.on{background:var(--primary);border-color:var(--primary);color:#fff}
+.auto-only{display:none!important}
+.nav-auto{display:none}
+#doc-overlay{position:fixed;inset:0;z-index:300;background:#fff;display:flex;flex-direction:column}
+.doc-bar{display:flex;align-items:center;gap:12px;padding:6px 12px;border-bottom:1px solid var(--border);font-size:12px;color:var(--text2)}
+body.auto{max-width:100%!important;flex-direction:column!important;height:100vh!important;overflow:hidden}
+body.auto .auto-only{display:inline-flex!important}
+body.auto #dt-sidebar,body.auto #dt-topbar{display:none!important}
+body.auto #mobile-wrap{display:block!important}
+body.auto #dt-main{margin-left:68px;height:100vh;overflow:hidden}
+body.auto #dt-content{height:100vh}
+body.auto #dt-content .screen{padding-bottom:12px}
+body.auto .nav{display:flex!important;flex-direction:column;position:fixed;left:0;top:0;bottom:0;right:auto;transform:none;width:68px;max-width:68px;height:100vh;padding:0;border-top:0;border-right:1px solid var(--border);z-index:100}
+body.auto .nav-btn{flex:1;justify-content:center;font-size:10px;gap:1px;order:9}
+body.auto .nav-btn.active{background:var(--primary-light);box-shadow:inset -3px 0 0 var(--primary)}
+body.auto .nav-btn[data-s=inicio]{order:1}body.auto .nav-btn[data-s=calendario]{order:2}body.auto .nav-btn[data-s=clientes]{order:3}
+body.auto .nav-btn[data-s=contactar]{order:4}body.auto .nav-btn[data-s=servicios]{order:5}body.auto .nav-btn[data-s=productos]{order:6}
+body.auto .nav-btn[data-s=presupuesto]{order:7}body.auto .nav-btn[data-s=config]{order:8}
+body.auto .nav-auto{display:flex}
+body.auto .nav-icon{width:22px;height:22px}
+body.auto .fab{bottom:14px;right:16px}
+body.auto .toast{bottom:14px}
+body.auto .btn{min-height:44px}
+body.auto .btn-xs{min-height:40px;padding:6px 12px;font-size:13px}
+body.auto .page-header{padding:6px 14px}
+body.auto .page-title{font-size:17px}
+body.auto .page-sub{font-size:12px}
+body.auto .modal-overlay{align-items:center}
+body.auto .modal{border-radius:16px;max-width:780px;width:calc(100vw - 110px);margin-left:68px;max-height:94vh;padding:12px 18px 16px}
+body.auto .modal-handle{display:none}
+body.auto .cal-day{min-height:70px}
+body.auto .cal-day-chip{font-size:11px;padding:2px 4px}
+body.auto .icon-btn{width:44px;height:44px}
+body.auto #screen-presupuesto .card-sm,body.auto #screen-contactar .seg-lista>*{margin-left:0!important;margin-right:0!important}
+body.auto #screen-presupuesto .pres-lista{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0 14px}
+body.auto #screen-contactar .seg-lista{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:0 14px}
+body.auto #screen-inicio,body.auto #screen-clientes{overflow:hidden}
+.auto-md .l>*{flex:none}
+body.auto .auto-top #sync-bar{padding:0 3px 0 10px!important;border-radius:16px;min-height:32px}
+body.auto .auto-top #sync-bar .btn{min-height:30px;padding:2px 9px;font-size:11px}
+body.auto #screen-calendario .page-header{display:none}
+body.auto #screen-calendario .segment{margin:6px 14px}
+body.auto .week-nav{padding:2px 14px}
+body.auto #screen-contactar .stats-grid{display:none}
+body.auto #screen-contactar .page-sub{display:none}
+body.auto #screen-contactar .segment{margin:6px 14px}
+body.auto .search-bar{margin-top:4px;margin-bottom:2px}
+.auto-top{display:flex;align-items:center;gap:10px;padding:6px 14px;background:var(--surface);border-bottom:1px solid var(--border);min-height:48px}
+.auto-top .t{font-size:17px;font-weight:700}.auto-top .s{font-size:12px;color:var(--text2)}.auto-top .sp{flex:1}
+.auto-chip{background:var(--bg);border-radius:16px;padding:5px 11px;font-size:12px;white-space:nowrap;font-weight:600;border:0;cursor:pointer;color:var(--text)}
+.auto-chip.dark{background:#1c1c1e;color:#fff}.auto-chip.on{background:var(--primary-light);color:var(--primary)}
+.auto-md{display:flex;gap:10px;padding:8px 12px;height:calc(100vh - 48px)}
+.auto-md>.l{flex:0 0 40%;min-width:0;overflow-y:auto;display:flex;flex-direction:column;gap:6px;padding-right:2px}
+.auto-md>.r{flex:1;min-width:0;overflow-y:auto}
+.auto-h{font-size:11px;font-weight:700;color:var(--text2);letter-spacing:.5px;text-transform:uppercase;margin-top:2px}
+.auto-row{background:var(--surface);border-radius:10px;padding:7px 11px;box-shadow:0 1px 2px rgba(0,0,0,.08);display:flex;align-items:center;gap:9px;cursor:pointer;border-left:5px solid var(--primary);min-height:50px}
+.auto-row.cur{border-left-color:var(--warning)}.auto-row.red{border-left-color:var(--danger)}.auto-row.sel{background:var(--primary-light);box-shadow:inset 0 0 0 2px var(--primary)}
+.auto-row.nb{border-left:0}
+.auto-row .grow{flex:1;min-width:0}.auto-row .nm{font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.auto-row .sb{font-size:12px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.auto-row .hr{text-align:right;flex:none}.auto-row .hr b{font-size:15px;color:var(--primary)}.auto-row.cur .hr b{color:var(--warning)}.auto-row .hr div{font-size:11px;color:var(--text2)}
+.auto-card{background:var(--surface);border-radius:12px;padding:12px 14px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.auto-card .big{font-size:30px;font-weight:700;color:var(--primary);line-height:1}
+.auto-btns{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}.auto-btns .btn{flex:1;min-width:84px;height:46px}
+.auto-vacio{padding:24px;text-align:center;color:var(--text2);font-size:14px}
+.auto-tabs{display:flex;gap:6px}.auto-tabs button{flex:1;border:0;border-radius:16px;padding:8px 0;font-size:13px;font-weight:700;background:var(--bg);color:var(--text);cursor:pointer}.auto-tabs button.on{background:var(--primary-light);color:var(--primary)}
+
 </style>
 </head>
 <body>
@@ -305,7 +379,7 @@ body.kawaii .cli-sin-tel{background:#f7c9dc!important}
     ☁️ <span id="dt-sync-txt">Listo</span>
   </div>
   <div style="padding:10px 16px 14px">
-    <div style="color:rgba(255,255,255,.35);font-size:10px;font-weight:600;letter-spacing:.4px">PianoTune Pro v3.8.4</div>
+    <div style="color:rgba(255,255,255,.35);font-size:10px;font-weight:600;letter-spacing:.4px">PianoTune Pro v3.9.0</div>
   </div>
 </div>
 
@@ -340,23 +414,29 @@ body.kawaii .cli-sin-tel{background:#f7c9dc!important}
 <div id="screen-cotizador" class="screen hidden"></div>
 
 <nav class="nav">
-  <button class="nav-btn active" onclick="navigate('inicio')">
+  <button class="nav-btn active" data-s="inicio" onclick="navigate('inicio')">
     <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9,22 9,12 15,12 15,22"/></svg>Inicio
   </button>
-  <button class="nav-btn" onclick="navigate('clientes')">
+  <button class="nav-btn" data-s="clientes" onclick="navigate('clientes')">
     <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>Clientes
   </button>
-  <button class="nav-btn" onclick="navigate('calendario')">
+  <button class="nav-btn" data-s="calendario" onclick="navigate('calendario')">
     <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>Agenda
   </button>
-  <button class="nav-btn" onclick="navigate('servicios')">
+  <button class="nav-btn" data-s="servicios" onclick="navigate('servicios')">
     <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93l-1.41 1.41M4.93 4.93l1.41 1.41M12 2v2M12 20v2M2 12h2M20 12h2M16.95 16.95l1.41 1.41M4.93 19.07l1.41-1.41"/></svg>Servicios
   </button>
-  <button class="nav-btn" onclick="navigate('productos')">
+  <button class="nav-btn" data-s="productos" onclick="navigate('productos')">
     <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>Productos
   </button>
-  <button class="nav-btn" onclick="navigate('presupuesto')">
+  <button class="nav-btn" data-s="presupuesto" onclick="navigate('presupuesto')">
     <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>Presup.
+  </button>
+  <button class="nav-btn nav-auto" data-s="contactar" onclick="navigate('contactar')">
+    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.8 19.8 0 01-8.63-3.07 19.5 19.5 0 01-6-6A19.8 19.8 0 012.12 4.18 2 2 0 014.11 2h3a2 2 0 012 1.72c.13.96.36 1.9.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0122 16.92z"/></svg><span>Seguim.</span>
+  </button>
+  <button class="nav-btn nav-auto" data-s="config" onclick="navigate('config')">
+    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.6 15a1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 4.6a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg><span>Config</span>
   </button>
 </nav>
 </div><!-- /mobile-wrap -->
@@ -376,7 +456,8 @@ body.kawaii .cli-sin-tel{background:#f7c9dc!important}
 <script>
 // ══ CONSTANTS ══
 const SK='pianotune_v3';
-const isDesktop=()=>window.innerWidth>=1024; // v2.9.0 — debe estar al inicio
+try{if(localStorage.getItem('ptp_auto')==='1')document.body.classList.add('auto');}catch(e){} // v3.9.0 — modo auto (CarStream)
+const isDesktop=()=>window.innerWidth>=1024&&!document.body.classList.contains('auto'); // v2.9.0 — debe estar al inicio
 var DT_SCREEN_TITLES={inicio:'Dashboard',clientes:'Clientes',calendario:'Agenda',contactar:'Seguimiento',servicios:'Catálogo de servicios',productos:'Inventario',presupuesto:'Presupuestos',config:'Configuración',cotizador:'Cotizador de Cuerdas',cuerdas:'Cuerdas entorchadas',ayuda:'Manual de Ayuda'};
 const PIANO_TIPOS={
   'Cola':["9 pies (Concert)","7 pies (Semi-Concert)","6 pies (Medium)","Baby Grand (hasta 5p4)","Cuarto de Cola (5p5-6p5)"],
@@ -2283,7 +2364,7 @@ function crdConfigHTML(){
   const cfg=crdCfg();
   const fila=l=>{const av=crdAvisoLote(l),act=l.activo!==false;
     if(!act&&!_crdVerBaja)return '';
-    const ex=crdExistencia(l),bajo=act&&l.material==='acero'&&ex&&ex.neto<CRD_MIN_G; // v3.8.2 — rosa: menos de 100 g
+    const ex=crdExistencia(l),bajo=act&&ex&&(l.material==='cobre'?ex.estimado:ex.neto)<CRD_MIN_G; // v3.9.0 — rosa: menos de 100 g (cobre: restante estimado)
     const fondo=!act?'background:#ececef;color:var(--text3)':bajo?'background:#fde4ee':'';
     return `<div class="settings-row" style="cursor:pointer;padding:10px 16px;${fondo}" onclick="crdModalLote('${l.material}','${l.id}')">
       <div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:600;${act?'':'color:var(--text3)'}">${_crdEsc(crdClaveGa(l))}${act?'':' · <span style="font-weight:500">dado de baja</span>'}${bajo?' <span style="font-size:11px;color:#c2185b;font-weight:600">· queda poco</span>':''}</div>
@@ -2309,6 +2390,10 @@ function crdConfigHTML(){
   ${acero.map(fila).join('')||'<div style="padding:8px 16px;font-size:12px;color:var(--warning)">Sin acero dado de alta: las fichas dirán "sin lote".</div>'}
   <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px 6px"><b style="font-size:13px">Cobre</b>
     <button class="btn btn-ghost btn-xs" onclick="crdModalLote('cobre')">+ Carrete de cobre</button></div>
+  ${(()=>{ // v3.9.0 — cobre por comprar: AWG cuyo restante estimado suma menos de 100 g
+    const tot={};cobre.filter(l=>l.activo!==false).forEach(l=>{const e=crdExistencia(l);if(!e)return;const k=crdCalLabel(l)||'?';if(!tot[k])tot[k]={g:0,d:crdDiamLote(l)};tot[k].g+=e.estimado;});
+    const faltan=Object.keys(tot).filter(k=>tot[k].g<CRD_MIN_G).sort((a,b)=>tot[a].d-tot[b].d);
+    return faltan.length?`<div style="padding:0 16px 8px;font-size:12px;line-height:1.5"><div style="background:#fde4ee;border-radius:8px;padding:8px 10px">🛒 <b>Cobre por comprar</b> (menos de ${CRD_MIN_G} g estimados): ${faltan.map(k=>`<b>${k}</b> (≈ ${_crdG(tot[k].g)})`).join(' · ')}</div></div>`:'';})()}
   ${cobre.map(fila).join('')}
   <div style="padding:12px 16px 6px"><b style="font-size:13px">Parámetros de fabricación</b></div>
   <div class="settings-row"><div><div class="sr-title">Factor de aplastamiento</div><div style="font-size:11px;color:var(--text2)">OD = D + factor × cobre · Forss 1.82 · geometría pura 2.0</div></div>
@@ -2708,8 +2793,8 @@ function navigate(name){
   if(name==='ayuda'){window.open('manual.html','_blank');return;}
   document.querySelectorAll('.screen').forEach(s=>s.classList.add('hidden'));
   document.getElementById('screen-'+name).classList.remove('hidden');
-  document.querySelectorAll('.nav-btn').forEach((b,i)=>{
-    b.classList.toggle('active',['inicio','clientes','calendario','servicios','productos','presupuesto','config'][i]===name);
+  document.querySelectorAll('.nav-btn').forEach(b=>{
+    b.classList.toggle('active',b.dataset.s===name);
   });
   currentScreen=name;
   const fabOn=['clientes','servicios','productos','presupuesto','calendario','contactar','cuerdas'];
@@ -2810,6 +2895,7 @@ async function fetchWeather(){
 
 // ══ SCREEN: INICIO ══
 async function renderInicio(){
+  if(esModoAuto()){renderInicioAuto();return;}
   if(isDesktop()){renderInicioDT();return;}
   const hoy=_hoyISO();
   const tec=state.tecnico||{};
@@ -2975,9 +3061,9 @@ async function renderInicio(){
         ${perfAvatar}
         <div><div class="page-title">Hola, ${tec.nombre||'Técnico'}</div>
         <div class="page-sub">${new Date().toLocaleDateString('es-MX',{weekday:'long',day:'numeric',month:'long'})}</div>
-        <div style="font-size:10px;color:var(--text3);margin-top:1px;letter-spacing:.3px">PianoTune Pro v3.8.4</div></div>
+        <div style="font-size:10px;color:var(--text3);margin-top:1px;letter-spacing:.3px">PianoTune Pro v3.9.0</div></div>
       </div>
-      <button class="btn btn-ghost btn-xs" onclick="navigate('config')">⚙ Config</button>
+      <div style="display:flex;gap:6px"><button class="btn btn-ghost btn-xs" onclick="setModoAuto(true)">🚗 Auto</button><button class="btn btn-ghost btn-xs" onclick="navigate('config')">⚙ Config</button></div>
     </div>
   </div>
   ${gBar}${sesBanner}
@@ -3450,6 +3536,7 @@ function segGuardarUltimaAfin(cid,pid){
   else{delete p.ultimaAfinacion;delete p.ultimaAfinacionAprox;}
   saveState();closeModal();showToast('Guardado ✓');showModalCliente(cid);
 }
+function _segBuscarH(el,keep){if(segBuscar===el.value)return;segBuscar=el.value;renderContactar();if(keep!==false)_bqFoco('seg-buscar');}
 function _segRefrescar(){if(currentScreen==='contactar')renderContactar();else if(currentScreen==='inicio')renderInicio();else if(currentScreen==='clientes')renderClientes();}
 
 // ── Sección "Seguimiento" en la ficha del cliente ──
@@ -3479,6 +3566,7 @@ function segSeccionFicha(c){
       <button class="btn btn-wa btn-xs" onclick="segModalWA(${c.id})">💬 Mensaje</button>
       <button class="btn btn-ghost btn-xs" onclick="segModalRegistrar(${c.id},'llamada')">📝 Registrar</button>
     </div>
+    <button class="btn btn-ghost btn-xs btn-full" style="margin-top:6px" onclick="segModalAgendarLlamada(${c.id})">⏰ Agendar llamada${s.estatus==='llamar_agendar'&&s.fechaRecontacto?' · '+fmtDate(s.fechaRecontacto):''}</button>
     ${its.length?`<div style="margin-top:10px;border-top:1px solid var(--border);padding-top:6px">${its.map(it=>{
       const res=it.resultado==='enviado'?'Mensaje enviado':it.resultado==='no_contesto'?'☺️ No contestó':it.resultado==='equivocado'?'✖️ Número equivocado':(SEG_EST[it.respuesta]?SEG_EST[it.respuesta].e+' '+SEG_EST[it.respuesta].l:'✅ Contestó');
       return `<div style="font-size:11px;color:var(--text2);padding:3px 0">${fmtDate(it.fecha)} ${it.hora||''} · ${it.canal==='whatsapp'?'💬':'📞'} ${res}${it.tecnico?' · '+_esc(it.tecnico.split(' ')[0]):''}${it.notas&&it.resultado!=='enviado'?'<br><span style="color:var(--text3)">'+_esc(it.notas)+'</span>':''}</div>`;}).join('')}</div>`:''}
@@ -3559,10 +3647,10 @@ function renderContactar(){
   </div>
   <div class="search-bar" style="margin-top:6px">
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-    <input class="search-input" id="seg-buscar" placeholder="Buscar cliente o teléfono…" value="${_esc(segBuscar)}" oninput="segBuscar=this.value;renderContactar();const e=document.getElementById('seg-buscar');e.focus();e.setSelectionRange(e.value.length,e.value.length)">
+    <input class="search-input" id="seg-buscar" placeholder="Buscar cliente o teléfono…" value="${_esc(segBuscar)}" ${_BQ_ATTR('_segBuscarH')}>
   </div>
   <div style="display:flex;gap:6px;overflow-x:auto;padding:4px 16px 10px;scrollbar-width:none">${chips}</div>
-  ${lista.length?lista.map(_segTarjeta).join(''):`<div class="card" style="text-align:center;color:var(--text2);padding:24px;font-size:14px;margin:0 16px">${vacio}</div>`}`
+  ${lista.length?'<div class="seg-lista">'+lista.map(_segTarjeta).join('')+'</div>':`<div class="card" style="text-align:center;color:var(--text2);padding:24px;font-size:14px;margin:0 16px">${vacio}</div>`}`
   :prospHtml}`;
 }
 
@@ -4005,28 +4093,221 @@ function guardarEdicionProspecto(id){
   saveState();closeModal();showToast('Prospecto actualizado ✓');renderContactar();
 }
 
+// ══ v3.9.0 · ORDEN, FLECHAS, AGENDAR LLAMADA Y MODO AUTO ══════════════════════════
+function esModoAuto(){return document.body.classList.contains('auto');}
+function setModoAuto(on){
+  try{localStorage.setItem('ptp_auto',on?'1':'0');}catch(e){}
+  document.body.classList.toggle('auto',!!on);
+  closeModal();navigate(currentScreen);
+  showToast(on?'🚗 Modo auto activado':'Modo auto desactivado');
+}
+// poll del buscador: el teclado del auto a veces no dispara "input"; se revisa el valor mientras el campo tiene el foco
+setInterval(()=>{if(!esModoAuto())return;const e=document.activeElement;if(e&&e.dataset&&e.dataset.bq&&typeof window[e.dataset.bq]==='function')window[e.dataset.bq](e);},400);
+const _BQ_ATTR=(fn)=>`data-bq="${fn}" oninput="${fn}(this)" onkeyup="${fn}(this)" onchange="${fn}(this,false)" onblur="${fn}(this,false)" onkeydown="if(event.key==='Enter'){${fn}(this,false);this.blur();}"`;
+function _chev(dir,onclick,dis){const pts=dir==='l'?'15,5 8,12 15,19':'9,5 16,12 9,19';return `<button class="chev-btn" ${dis?'disabled':''} onclick="${onclick}" aria-label="${dir==='l'?'Anterior':'Siguiente'}"><svg viewBox="0 0 24 24"><polyline points="${pts}"/></svg></button>`;}
+// Barra anterior / siguiente sobre una lista de ids; fn recibe el id destino
+function _navLista(ids,id,fn){
+  const i=(ids||[]).indexOf(id);if(i<0||ids.length<2)return '';
+  const q=v=>typeof v==='number'?v:`'${v}'`;
+  return `<div class="navrow">${_chev('l',i>0?`${fn}(${q(ids[i-1])})`:'',i===0)}<span>${i+1} de ${ids.length}</span>${_chev('r',i<ids.length-1?`${fn}(${q(ids[i+1])})`:'',i===ids.length-1)}</div>`;
+}
+// Orden de listas (Clientes y Presupuestos)
+const _ORD_CHIPS=[['az','A-Z'],['za','Z-A'],['apellido','Apellido'],['marca','Marca'],['ultima','Últ. afinación'],['6m','Afinados 6 m'],['1a','Afinados 1 año']];
+let _ordRev=false;
+function _chipsOrden(cur,fn,conFecha){
+  const lst=(conFecha?[['fecha','Recientes']]:[]).concat(_ORD_CHIPS);
+  return `<div class="sortbar">${lst.map(([k,l])=>`<button class="sortchip${cur===k?' on':''}" onclick="${fn}('${k}')">${l}${k==='ultima'&&cur==='ultima'?(_ordRev?' ↑':' ↓'):''}</button>`).join('')}</div>`;
+}
+function _desdeISO(m){const d=new Date();d.setMonth(d.getMonth()-m);return _isoLocal(d);}
+function _cliUltAfin(c){let m=null;(c.pianos||[]).forEach(p=>{const u=segUltimaAfin(c,p);if(u&&u.fecha&&(!m||u.fecha>m))m=u.fecha;});return m;}
+function _ordenar(arr,gc,sort,tie,gm){
+  const cl=x=>gc(x)||{};
+  const nom=x=>_bq(cl(x).nombre);
+  const ap=x=>{const w=String(cl(x).nombre||'').trim().split(/\s+/);return _bq(w.length>1?w[w.length-1]:w[0]);};
+  const mc=x=>{const m=gm?gm(x):(((cl(x).pianos||[])[0]||{}).marca);return _bq(m)||'￿';};
+  const ua=x=>gc(x)?_cliUltAfin(gc(x)):null;
+  let a=arr.slice();
+  if(sort==='6m'||sort==='1a'){const lim=_desdeISO(sort==='6m'?6:12);a=a.filter(x=>{const u=ua(x);return u&&u>=lim;});}
+  const t=(x,y)=>tie?tie(x,y):0;
+  const by=f=>(x,y)=>f(x).localeCompare(f(y),'es')||nom(x).localeCompare(nom(y),'es')||t(x,y);
+  if(sort==='az')a.sort(by(nom));
+  else if(sort==='za')a.sort(by(nom)).reverse();
+  else if(sort==='apellido')a.sort(by(ap));
+  else if(sort==='marca')a.sort(by(mc));
+  else if(sort==='ultima'||sort==='6m'||sort==='1a'){
+    const rev=sort==='ultima'&&_ordRev;
+    a.sort((x,y)=>{const ux=ua(x),uy=ua(y);if(!ux&&!uy)return nom(x).localeCompare(nom(y),'es');if(!ux)return 1;if(!uy)return -1;return (rev?ux.localeCompare(uy):uy.localeCompare(ux))||t(x,y);});
+  }else if(tie)a.sort(tie);
+  return a;
+}
+// ── Agendar llamada (manual) ──
+function segModalAgendarLlamada(cid){
+  const c=getCliente(cid);if(!c)return;
+  const hoy=_hoyISO();const s=c.seguimiento||{};
+  const ya=s.estatus==='llamar_agendar'&&s.fechaRecontacto;
+  window._agLl={cid};
+  openModal(`<div class="modal-title">⏰ Agendar llamada</div>
+  <div style="font-size:13px;color:var(--text2);margin-bottom:10px"><b>${_esc(c.nombre)}</b> aparecerá en <b>Toca llamar</b> desde la fecha elegida y se queda ahí hasta que se registre la llamada.</div>
+  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+    ${[['Hoy',0],['Mañana',1],['En 3 días',3],['En 1 semana',7]].map(([l,n])=>`<button class="btn btn-ghost btn-xs" onclick="document.getElementById('agll-f').value=_isoMas(_hoyISO(),${n})">${l}</button>`).join('')}
+  </div>
+  <div class="input-group"><label class="input-label">Fecha de la llamada</label><input type="date" class="input" id="agll-f" value="${ya?s.fechaRecontacto:hoy}"></div>
+  <button class="btn btn-primary btn-full" onclick="segGuardarAgendarLlamada()">Agendar llamada</button>
+  ${ya?`<button class="btn btn-ghost btn-full" style="margin-top:6px" onclick="segQuitarAgendarLlamada()">Quitar de llamadas</button>`:''}`);
+}
+function segGuardarAgendarLlamada(){
+  const r=window._agLl;if(!r)return;const c=getCliente(r.cid);if(!c)return;
+  const f=(document.getElementById('agll-f')||{}).value;if(!f){showToast('Elige la fecha');return;}
+  c.seguimiento=Object.assign({},c.seguimiento||{},{estatus:'llamar_agendar',fechaRecontacto:f,noContactar:false});
+  saveState();closeModal();showToast('Llamada agendada: '+fmtDate(f)+' ✓');_segRefrescar();
+}
+function segQuitarAgendarLlamada(){
+  const r=window._agLl;if(!r)return;const c=getCliente(r.cid);if(!c)return;
+  c.seguimiento=Object.assign({},c.seguimiento||{},{estatus:null,fechaRecontacto:null});
+  saveState();closeModal();showToast('Llamada quitada');_segRefrescar();
+}
+// ── Documentos (PDF): en modo auto se ven dentro de la app con botón Volver ──
+function _abrirDocVentana(html){
+  if(esModoAuto()){
+    const old=document.getElementById('doc-overlay');if(old)old.remove();
+    const ov=document.createElement('div');ov.id='doc-overlay';
+    ov.innerHTML=`<div class="doc-bar"><button class="btn btn-primary" onclick="document.getElementById('doc-overlay').remove()">← Volver</button><span>Vista del documento · no se imprime desde el auto</span></div><iframe id="doc-frame" style="flex:1;border:0;width:100%;background:#fff"></iframe>`;
+    document.body.appendChild(ov);
+    const css='<style>.action-bar{display:none!important}</style>';
+    document.getElementById('doc-frame').srcdoc=html.includes('</head>')?html.replace('</head>',css+'</head>'):css+html;
+    return;
+  }
+  const win=window.open('','_blank');
+  if(!win){showToast('⚠ Permite ventanas emergentes',4000);return;}
+  win.document.write(html);win.document.close();
+}
+
 // ══ SCREEN: CLIENTES ══
+
+// ── MODO AUTO: Inicio (lista 40 % · detalle 60 %) ──
+let autoTab='citas',autoSel=null;
+function _diaCorto(f){const hoy=_hoyISO();if(f===hoy)return 'hoy';if(f===_isoMas(hoy,1))return 'mañana';return new Date(f+'T00:00:00').toLocaleDateString('es-MX',{weekday:'short',day:'numeric'});}
+function _autoSel(id){autoSel=id;renderInicio();}
+function _autoTel(id){const c=getCliente(id);const t=c?_telDigitos(c.telefono):'';if(!t){showToast('Este cliente no tiene teléfono',3000);return;}window.location.href='tel:'+t;}
+function _autoDetalleCita(c,ids){
+  const cli=getCliente(c.clienteId),pi=getPiano(c.clienteId,c.pianoId),op=opEstado(c),hoy=_hoyISO();
+  const its=(c.ordenServicio&&c.ordenServicio.items&&c.ordenServicio.items.length)?c.ordenServicio.items:[{nombre:c.servicio,precio:c.precio||0}];
+  const tot=its.reduce((x,i)=>x+Number(i.precio||0),0);
+  const foraneo=esForaneo(cli);
+  const main=op==='en_curso'
+    ?`<button class="btn btn-ghost" onclick="modalAgregarVisita(${c.id})">➕ Visita</button><button class="btn btn-ghost" onclick="modalEditarOrden(${c.id})">📝 OS</button><button class="btn btn-ghost" onclick="modalPausarServicio(${c.id})">⏸ Pausar</button><button class="btn btn-success" onclick="modalCerrarServicio(${c.id})">✓ Cerrar</button>`
+    :(c.fecha<=hoy&&op!=='cancelada'?`<button class="btn btn-success" onclick="iniciarServicio(${c.id})">▶ Iniciar</button>`:'');
+  return `<div class="auto-card">
+    <div style="display:flex;align-items:center;gap:12px"><div class="big">${_esc(c.hora||'')}</div><div style="flex:1;min-width:0"><div style="font-size:19px;font-weight:700">${_esc(cli?cli.nombre:'?')}</div><div style="font-size:12px;color:var(--text2)">${_esc(pi?pianoLabel(pi):'')} · ${op==='en_curso'?'en curso':_diaCorto(c.fecha)+' '+fmtDate(c.fecha)}${c.duracionH?' · '+c.duracionH+' h':''}</div></div><span class="tag tag-blue">${fmtMoney(tot)}</span></div>
+    <div style="margin:8px 0;padding:6px 0;border-top:1px solid var(--border);border-bottom:1px solid var(--border);font-size:13px">${its.map(i=>`<div style="display:flex;justify-content:space-between;padding:2px 0"><span>${_esc(i.nombre)}</span><b>${fmtMoney(i.precio)}</b></div>`).join('')}</div>
+    ${cli&&(cli.direccion||cli.telefono)?`<div style="font-size:12px;color:var(--text2)">${cli.direccion?'📍 '+_esc(cli.direccion):''}${cli.direccion&&cli.telefono?' · ':''}${cli.telefono?'📞 '+_esc(cli.telefono):''}</div>`:''}
+    <div class="auto-btns">${cli&&!foraneo?`<button class="btn btn-primary" onclick="irAUbicacion(${cli.id})">🗺 Ir</button>`:''}${main}${cli?`<button class="btn btn-wa" onclick="showMenuWA(${cli.id})">💬</button><button class="btn btn-ghost" onclick="_autoTel(${cli.id})">📞</button>`:''}</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px">${_chev('l',ids.indexOf(c.id)>0?`_autoSel(${ids[ids.indexOf(c.id)-1]})`:'',ids.indexOf(c.id)<=0)}<button class="btn btn-ghost btn-xs" onclick="showModalDetalleCita(${c.id})">Abrir cita completa ›</button>${_chev('r',ids.indexOf(c.id)<ids.length-1?`_autoSel(${ids[ids.indexOf(c.id)+1]})`:'',ids.indexOf(c.id)>=ids.length-1)}</div>
+  </div>`;
+}
+function _autoDetalleLlamada(i,ids){
+  const c=i.cli,s=i.s||{},est=s.estatus&&SEG_EST[s.estatus],g=SEG_GRUPOS.find(x=>x.k===i.grupo);
+  const ref=i.ref;const p=ref?ref.p:(c.pianos||[])[0];
+  const idx=ids.indexOf(c.id);
+  return `<div class="auto-card">
+    <div style="display:flex;align-items:center;gap:10px"><div class="avatar" style="width:44px;height:44px">${initials(c.nombre)}</div><div style="flex:1;min-width:0"><div style="font-size:19px;font-weight:700">${_esc(c.nombre)}</div><div style="font-size:12px;color:var(--text2)">${p?_esc((p.marca||'')+' '+(p.modelo||'')):'Sin piano'}${ref&&ref.u?' · última afinación '+fmtDate(ref.u.fecha)+' ('+ref.meses+' m)':''}</div></div>${est?`<span class="tag tag-${est.c}">${est.e} ${est.l}</span>`:`<span class="tag tag-gray">${g?g.e+' '+g.l:''}</span>`}</div>
+    <div style="font-size:12px;color:var(--text2);margin:8px 0">📞 ${_esc(c.telefono||'sin teléfono')}${s.ultimoContacto?' · último contacto '+fmtDate(s.ultimoContacto):''}${i.fechaRecontacto?' · volver a llamar '+fmtDate(i.fechaRecontacto):''}${i.motivoGrupo?'<br><span style="color:var(--danger)">'+i.motivoGrupo+'</span>':''}</div>
+    <div class="auto-btns"><button class="btn btn-primary" onclick="segLlamar(${c.id})">📞 Llamar</button><button class="btn btn-wa" onclick="segModalWA(${c.id})">💬 WhatsApp</button><button class="btn btn-ghost" onclick="segModalRegistrar(${c.id},'llamada')">📝 Registrar</button></div>
+    <div class="auto-btns"><button class="btn btn-ghost" onclick="showModalNuevaCita(null,${c.id}${p?','+p.id:''})">📅 Agendar cita</button><button class="btn btn-ghost" onclick="segModalAgendarLlamada(${c.id})">⏰ Llamar otro día</button></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px">${_chev('l',idx>0?`_autoSel(${ids[idx-1]})`:'',idx<=0)}<button class="btn btn-ghost btn-xs" onclick="showModalCliente(${c.id})">Abrir ficha ›</button>${_chev('r',idx<ids.length-1?`_autoSel(${ids[idx+1]})`:'',idx>=ids.length-1)}</div>
+  </div>`;
+}
+function renderInicioAuto(){
+  const hoy=_hoyISO(),tec=state.tecnico||{};
+  const enc=state.citas.filter(c=>opEstado(c)==='en_curso');
+  const pr=state.citas.filter(c=>opEstado(c)==='pendiente'&&c.fecha>=hoy).sort((a,b)=>(a.fecha+a.hora).localeCompare(b.fecha+b.hora)).slice(0,30);
+  const ve=state.citas.filter(c=>opEstado(c)==='vencida').sort((a,b)=>b.fecha.localeCompare(a.fecha)).slice(0,5);
+  const g=segGrupos(),calls=g.hoy;
+  const idsC=enc.concat(pr,ve).map(c=>c.id),idsL=calls.map(i=>i.cli.id);
+  const ids=autoTab==='citas'?idsC:idsL;
+  if(!ids.includes(autoSel))autoSel=ids.length?ids[0]:null;
+  const rowC=(c,k)=>{const cli=getCliente(c.clienteId),pi=getPiano(c.clienteId,c.pianoId);
+    const its=(c.ordenServicio&&c.ordenServicio.items)||[];const tot=its.reduce((x,i)=>x+Number(i.precio||0),0)||c.precio||0;
+    return `<div class="auto-row ${k==='enc'?'cur':k==='ve'?'red':''}${c.id===autoSel?' sel':''}" onclick="_autoSel(${c.id})"><div class="grow"><div class="nm">${_esc(cli?cli.nombre:'?')}</div><div class="sb">${_esc((pi?pianoLabel(pi):'')+(c.servicio?' · '+c.servicio:''))}</div></div><div class="hr">${k==='enc'?`<b>${fmtMoney(tot)}</b><div>en curso${(c.estado==='pausado'||c.pausada)?' ⏸':''}</div>`:`<b>${_esc(c.hora||'')}</b><div>${_diaCorto(c.fecha)}</div>`}</div></div>`;};
+  const rowL=i=>{const est=i.s&&i.s.estatus&&SEG_EST[i.s.estatus];const p=i.ref?i.ref.p:(i.cli.pianos||[])[0];
+    return `<div class="auto-row${i.cli.id===autoSel?' sel':''}" onclick="_autoSel(${i.cli.id})"><div class="grow"><div class="nm">${_esc(i.cli.nombre)}</div><div class="sb">${p?_esc((p.marca||'')+' '+(p.modelo||'')):'Sin piano'}${i.meses!=null?' · '+i.meses+' meses':''}${est?' · '+est.e:''}</div></div><div class="hr"><b>📞</b></div></div>`;};
+  let izq;
+  if(autoTab==='citas'){
+    izq=(enc.length?'<div class="auto-h">🔧 En curso</div>'+enc.map(c=>rowC(c,'enc')).join(''):'')
+      +(pr.length?'<div class="auto-h">📅 Próximos</div>'+pr.map(c=>rowC(c,'pr')).join(''):'')
+      +(ve.length?'<div class="auto-h">🔴 Vencidas</div>'+ve.map(c=>rowC(c,'ve')).join(''):'')
+      ||'<div class="auto-vacio">Sin citas próximas</div>';
+  }else{
+    izq=(calls.length?'<div class="auto-h">☎️ Toca llamar</div>'+calls.map(rowL).join(''):'<div class="auto-vacio">Nadie por llamar hoy 🎉</div>')
+      +`<div class="auto-h" style="cursor:pointer" onclick="navigate('contactar')">⏳ Vencidos ${g.vencidos.length} · Por confirmar ${g.confirmar.length} ›</div>`;
+  }
+  let der='<div class="auto-vacio">Nada seleccionado</div>';
+  if(autoSel!=null){
+    if(autoTab==='citas'){const c=state.citas.find(x=>x.id===autoSel);if(c)der=_autoDetalleCita(c,idsC);}
+    else{const i=calls.find(x=>x.cli.id===autoSel);if(i)der=_autoDetalleLlamada(i,idsL);}
+  }
+  document.getElementById('screen-inicio').innerHTML=`
+  <div class="auto-top"><span class="t">Hola, ${_esc((tec.nombre||'Técnico').split(' ')[0])}</span><span class="s">${new Date().toLocaleDateString('es-MX',{weekday:'short',day:'numeric',month:'short'})}</span>
+    <span id="sync-bar" class="auto-chip" style="display:inline-flex;align-items:center;gap:6px"></span><span class="auto-chip" id="weather-temp">☁️</span><span class="sp"></span>
+    <button class="auto-chip dark" onclick="setModoAuto(false)">🚗 Auto</button><button class="auto-chip" onclick="navigate('config')">⚙ Config</button></div>
+  <div class="auto-md"><div class="l"><div class="auto-tabs"><button class="${autoTab==='citas'?'on':''}" onclick="autoTab='citas';autoSel=null;renderInicio()">📅 Citas</button><button class="${autoTab==='llamadas'?'on':''}" onclick="autoTab='llamadas';autoSel=null;renderInicio()">📞 Llamadas ${calls.length}</button></div>${izq}</div><div class="r">${der}</div></div>`;
+  setTimeout(updateSyncBar,80);
+  fetchWeather().then(w=>{if(!w)return;const te=document.getElementById('weather-temp');if(te)te.textContent=w.icon+' '+w.temp+'°';});
+}
+// ── MODO AUTO: Clientes ──
+function _cliDetalleAuto(c,list){
+  if(!c)return '<div class="auto-vacio">Selecciona un cliente</div>';
+  const ids=list.map(x=>x.id),idx=ids.indexOf(c.id),foraneo=esForaneo(c);
+  const info=foraneo?null:segInfoCliente(c),g=info?SEG_GRUPOS.find(x=>x.k===info.grupo):null;
+  const pianos=(c.pianos||[]).map(p=>{const u=segUltimaAfin(c,p);return `<div style="font-size:12.5px;padding:2px 0">🎹 <b>${_esc((p.marca||'')+' '+(p.modelo||''))}</b>${p.tipo?' ('+_esc(p.tipo)+')':''} · <span style="color:var(--text2)">últ. afinación ${u?fmtDate(u.fecha)+(u.aprox?' aprox.':'')+' · '+_mesesDesde(u.fecha)+' m':'sin fecha'}</span></div>`;}).join('')||'<div style="font-size:12px;color:var(--text3)">Sin pianos</div>';
+  return `<div class="auto-card">
+    <div style="display:flex;align-items:center;gap:10px"><div class="avatar" style="width:44px;height:44px">${initials(c.nombre)}</div><div style="flex:1;min-width:0"><div style="font-size:19px;font-weight:700">${_esc(c.nombre)}</div><div style="font-size:12px;color:var(--text2)">${foraneo?'🚚 Foráneo'+(c.ciudad?' · '+_esc(c.ciudad):''):''}${c.direccion?'📍 '+_esc(c.direccion):''}</div></div>${g?`<span class="tag tag-gray">${g.e} ${g.l}</span>`:''}</div>
+    <div style="font-size:12.5px;margin:6px 0;color:var(--text2)">📞 ${_telDigitos(c.telefono)?_esc(c.telefono):'<span style="color:#c2185b">sin teléfono</span>'}</div>
+    ${pianos}
+    <div class="auto-btns"><button class="btn btn-primary" onclick="${foraneo?`_autoTel(${c.id})`:`segLlamar(${c.id})`}">📞 Llamar</button><button class="btn btn-wa" onclick="showMenuWA(${c.id})">💬 WhatsApp</button>${foraneo?'':`<button class="btn btn-ghost" onclick="irAUbicacion(${c.id})">🗺 Ir</button>`}</div>
+    <div class="auto-btns">${foraneo?'':`<button class="btn btn-ghost" onclick="showModalNuevaCita(null,${c.id})">📅 Cita</button><button class="btn btn-ghost" onclick="segModalAgendarLlamada(${c.id})">⏰ Agendar llamada</button>`}<button class="btn btn-ghost" onclick="showModalCliente(${c.id})">Ficha completa ›</button></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px">${_chev('l',idx>0?`_cliSelIr(${ids[idx-1]})`:'',idx<=0)}<span style="font-size:12px;color:var(--text2)">${idx+1} de ${ids.length}</span>${_chev('r',idx<ids.length-1?`_cliSelIr(${ids[idx+1]})`:'',idx>=ids.length-1)}</div>
+  </div>`;
+}
+function renderClientesAuto(list){
+  if(!list.some(c=>c.id===cliSel))cliSel=list.length?list[0].id:null;
+  const rows=list.map(c=>{const st=!_telDigitos(c.telefono);const pn=(c.pianos||[]).map(p=>(p.marca||'')+' '+(p.modelo||'')).join(' · ');
+    return `<div class="auto-row nb${c.id===cliSel?' sel':''}${st?' cli-sin-tel':''}" onclick="_cliSelIr(${c.id})"><div class="avatar" style="width:36px;height:36px;font-size:13px;flex:none">${initials(c.nombre)}</div><div class="grow"><div class="nm">${_esc(c.nombre)}</div><div class="sb">${esForaneo(c)?'🚚 ':''}${_esc(pn)}${st?' · sin teléfono':' · '+_esc(c.telefono)}</div></div></div>`;}).join('')||'<div class="auto-vacio">Sin resultados</div>';
+  document.getElementById('screen-clientes').innerHTML=`
+  <div class="auto-top"><span class="t">Clientes</span><span class="s">${state.clientes.length} clientes · ${state.clientes.reduce((n,c)=>n+(c.pianos||[]).length,0)} pianos</span><span class="sp"></span>
+    <button class="auto-chip" onclick="impModalInicio()">📥 Importar</button><button class="btn btn-primary btn-xs" onclick="showModalNuevoCliente()">＋</button></div>
+  <div class="auto-md"><div class="l"><div style="display:flex;gap:6px;align-items:center"><div class="search-bar" style="flex:1;margin:0;padding:8px 12px"><input id="cli-search" class="search-input" placeholder="Buscar nombre, teléfono, marca o ciudad…" value="${_esc(cliSearch)}" ${_BQ_ATTR('_cliBuscar')}></div>${cliSearch?`<button class="btn btn-ghost btn-xs" onclick="cliSearch='';renderClientes()">✕</button>`:''}<button class="btn btn-primary btn-xs" onclick="const e=document.getElementById('cli-search');_cliBuscar(e,false);e.blur()">Buscar</button></div>
+    <div class="sortbar" style="padding:0 0 4px">${_chipsOrden(cliSort,'cliOrdenar').replace(/^<div class="sortbar">|<\/div>$/g,'')}</div>${rows}</div>
+  <div class="r">${_cliDetalleAuto(getCliente(cliSel),list)}</div></div>`;
+}
 // v3.8.4 — búsqueda sin acentos y que conserva el foco al escribir
 function _bq(s){return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();}
 function _bqFoco(id){const e=document.getElementById(id);if(e){e.focus();const n=e.value.length;try{e.setSelectionRange(n,n);}catch(_){}}}
-let cliSearch='';
+let cliSearch='',cliSort='az',cliSel=null;
 let cliCat='todos'; // v3.8.1 — filtro Locales / Foráneos
+function cliOrdenar(k){if(k===cliSort&&k==='ultima')_ordRev=!_ordRev;else _ordRev=false;cliSort=k;renderClientes();}
+function _cliBuscar(el,keep){if(cliSearch===el.value)return;cliSearch=el.value;renderClientes();if(keep!==false)_bqFoco('cli-search');}
+function _cliSelIr(id){cliSel=id;renderClientes();}
 function renderClientes(){
   const _q=_bq(cliSearch),_qd=cliSearch.replace(/\D/g,'');
   const f=state.clientes.filter(c=>!_q||_bq(c.nombre).includes(_q)||_bq(c.ciudad).includes(_q)||_bq(c.direccion).includes(_q)||(c.pianos||[]).some(p=>_bq((p.marca||'')+' '+(p.modelo||'')).includes(_q))||(_qd.length>=3&&_telDigitos(c.telefono).includes(_qd)));
   const _sinTel=state.clientes.filter(c=>!_telDigitos(c.telefono)).length;
   const _nFor=state.clientes.filter(esForaneo).length;
   const f2=f.filter(c=>cliCat==='todos'||(cliCat==='foraneo'?esForaneo(c):!esForaneo(c)));
+  const f3=_ordenar(f2,x=>x,cliSort);window._cliLista=f3.map(c=>c.id);
+  if(esModoAuto()){renderClientesAuto(f3);return;}
   document.getElementById('screen-clientes').innerHTML=`
   <div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px"><div><div class="page-title">Clientes</div><div class="page-sub">${state.clientes.length} clientes · ${state.clientes.reduce((s,c)=>s+c.pianos.length,0)} pianos${_sinTel?` · <span style="color:#c2185b">${_sinTel} sin teléfono</span>`:''}</div></div><button class="btn btn-ghost btn-xs" style="margin-top:4px;white-space:nowrap" onclick="impModalInicio()">📥 Importar</button></div>
   <div class="search-bar" style="margin-top:8px">
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-    <input id="cli-search" class="search-input" placeholder="Buscar nombre, teléfono, marca o ciudad…" value="${_esc(cliSearch)}" oninput="cliSearch=this.value;renderClientes();_bqFoco('cli-search')">
+    <input id="cli-search" class="search-input" placeholder="Buscar nombre, teléfono, marca o ciudad…" value="${_esc(cliSearch)}" ${_BQ_ATTR('_cliBuscar')}>
     ${cliSearch?`<button class="btn btn-ghost btn-xs" style="margin-left:4px" onclick="cliSearch='';renderClientes()">✕</button>`:''}
+    <button class="btn btn-primary btn-xs auto-only" onclick="const e=document.getElementById('cli-search');_cliBuscar(e,false);e.blur()">Buscar</button>
   </div>
+  ${_chipsOrden(cliSort,'cliOrdenar')}
   ${_nFor?`<div style="display:flex;gap:6px;padding:0 16px 6px">${[['todos','Todos',state.clientes.length],['local','🏠 Locales',state.clientes.length-_nFor],['foraneo','🚚 Foráneos',_nFor]].map(([k,l,n])=>`<button class="btn btn-xs ${cliCat===k?'btn-primary':'btn-ghost'}" onclick="cliCat='${k}';renderClientes()">${l} <b>${n}</b></button>`).join('')}</div>`:''}
   <div style="padding:0 16px">
-  ${f2.map(c=>{const fp=c.pianos[0];
+  ${f3.map(c=>{const fp=c.pianos[0];
     const thumb=fp&&fp.fotos&&fp.fotos.length?`<img src="${fp.fotos[0]}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:'';
     const _st=!_telDigitos(c.telefono);
     return`<div class="list-item${_st?' cli-sin-tel':''}" onclick="showModalCliente(${c.id})">
@@ -4043,6 +4324,7 @@ function showModalCliente(id){
   const c=getCliente(id);if(!c)return;
   const citas=state.citas.filter(x=>x.clienteId===id).sort((a,b)=>b.fecha.localeCompare(a.fecha));
   openModal(`
+  ${currentScreen==='clientes'?_navLista(window._cliLista,id,'showModalCliente'):''}
   <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
     <div class="avatar" style="width:50px;height:50px;font-size:18px">${initials(c.nombre)}</div>
     <div><div style="font-weight:700;font-size:17px">${c.nombre}</div>
@@ -5307,24 +5589,31 @@ function importarCatalogoInicial(){
 }
 
 // ══ SCREEN: PRESUPUESTO ══
-let presSearch='';
+let presSearch='',presSort='fecha';
+function presOrdenar(k){if(k===presSort&&k==='ultima')_ordRev=!_ordRev;else _ordRev=false;presSort=k;renderPresupuesto();}
+function _presBuscar(el,keep){if(presSearch===el.value)return;presSearch=el.value;renderPresupuesto();if(keep!==false)_bqFoco('pres-search');}
 function renderPresupuesto(){
   const _q=_bq(presSearch),_qd=presSearch.replace(/\D/g,'');
-  const _lista=state.presupuestos.map(p=>{const cli=getCliente(p.clienteId);const piano=p.pianoId?getPiano(p.clienteId,p.pianoId):cli&&cli.pianos[0];const total=p.items.reduce((s,i)=>s+Number(i.precio),0);return{p,cli,piano,total};})
+  const _lista0=state.presupuestos.map(p=>{const cli=getCliente(p.clienteId);const piano=p.pianoId?getPiano(p.clienteId,p.pianoId):cli&&cli.pianos[0];const total=p.items.reduce((s,i)=>s+Number(i.precio),0);return{p,cli,piano,total};})
     .filter(o=>!_q||_bq(o.cli&&o.cli.nombre).includes(_q)||_bq(o.piano?pianoLabel(o.piano):'').includes(_q)||o.p.items.some(i=>_bq(i.nombre).includes(_q))||_bq(fmtDate(o.p.fecha)).includes(_q)||_bq(o.p.fecha).includes(_q)||(_qd.length>=3&&String(Math.round(o.total)).includes(_qd)))
-    .sort((a,b)=>String(b.p.fecha||'').localeCompare(String(a.p.fecha||''))||b.p.id-a.p.id);
+  ;
+  const _tieP=(x,y)=>String(y.p.fecha||'').localeCompare(String(x.p.fecha||''))||y.p.id-x.p.id;
+  const _lista=_ordenar(_lista0,o=>o.cli,presSort,_tieP,o=>o.piano&&o.piano.marca);
+  window._presLista=_lista.map(o=>o.p.id);
   document.getElementById('screen-presupuesto').innerHTML=`
   <div class="page-header"><div class="page-title">Presupuestos</div><div class="page-sub">${_q?_lista.length+' de ':''}${state.presupuestos.length} generados</div></div>
   <div class="search-bar" style="margin-top:8px">
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-    <input id="pres-search" class="search-input" placeholder="Buscar cliente, piano, servicio o monto…" value="${_esc(presSearch)}" oninput="presSearch=this.value;renderPresupuesto();_bqFoco('pres-search')">
+    <input id="pres-search" class="search-input" placeholder="Buscar cliente, piano, servicio o monto…" value="${_esc(presSearch)}" ${_BQ_ATTR('_presBuscar')}>
     ${presSearch?`<button class="btn btn-ghost btn-xs" style="margin-left:4px" onclick="presSearch='';renderPresupuesto()">✕</button>`:''}
+    <button class="btn btn-primary btn-xs auto-only" onclick="const e=document.getElementById('pres-search');_presBuscar(e,false);e.blur()">Buscar</button>
   </div>
+  ${_chipsOrden(presSort,'presOrdenar',true)}
   <div style="padding:14px">
   ${state.presupuestos.length>0&&_lista.length===0?`<div class="card" style="text-align:center;padding:24px;color:var(--text2)">Sin resultados para «${_esc(presSearch)}»</div>`:''}
   ${state.presupuestos.length===0
     ?`<div class="card" style="text-align:center;padding:32px;color:var(--text2)"><div style="font-size:40px">📄</div><div style="font-weight:600;margin-top:8px">Sin presupuestos</div><div style="font-size:13px;margin-top:4px">Toca + para crear uno</div></div>`
-    :_lista.map(({p,cli,piano,total})=>{
+    :'<div class="pres-lista">'+_lista.map(({p,cli,piano,total})=>{
       return`<div class="card card-sm" style="margin:0 0 10px">
         <div style="display:flex;justify-content:space-between;align-items:flex-start">
           <div><div style="font-weight:700;font-size:15px">${cli?cli.nombre:'?'}</div>
@@ -5340,7 +5629,7 @@ function renderPresupuesto(){
           <button class="btn btn-ghost btn-xs" onclick="verPresupuesto(${p.id})">Ver</button>
           <button class="btn btn-danger btn-xs" onclick="eliminarPresupuesto(${p.id})">Borrar</button>
         </div>
-      </div>`;}).join('')}
+      </div>`;}).join('')+'</div>'}
   </div>`;}
 
 // ══ MODAL: NUEVO PRESUPUESTO ══
@@ -5813,7 +6102,7 @@ function verPresupuesto(id){
   const p=state.presupuestos.find(x=>x.id===id);const cli=getCliente(p.clienteId);
   const piano=p.pianoId?getPiano(p.clienteId,p.pianoId):cli&&cli.pianos[0];
   const total=p.items.reduce((s,i)=>s+Number(i.precio),0);
-  openModal(`<div class="modal-title">Presupuesto</div>
+  openModal(`${currentScreen==='presupuesto'?_navLista(window._presLista,id,'verPresupuesto'):''}<div class="modal-title">Presupuesto</div>
   <div style="font-weight:700;font-size:16px">${cli?cli.nombre:'?'}</div>
   <div style="font-size:13px;color:var(--text2);margin-bottom:12px">${piano?pianoLabel(piano):''} · ${fmtDate(p.fecha)}</div>
   ${p.items.map(item=>`<div class="budget-row">
@@ -6393,7 +6682,7 @@ function renderConfig(){
   </div>
   <div class="credits-block">
     <div class="credits-logo">🎹</div>
-    <div class="credits-app">PianoTune Pro v3.8.4</div>
+    <div class="credits-app">PianoTune Pro v3.9.0</div>
     <div class="credits-dev">Desarrollado por Sergio L. Ruiz Jones</div>
     <div class="credits-co">Pianos and Pianos — Mazatlán, Sin.</div>
   </div>`;
@@ -7147,9 +7436,7 @@ tbody tr:nth-child(even){background:#e8f0fe}
   </div>
 </div></body></html>`;
 
-  const win=window.open('','_blank');
-  if(!win){showToast('⚠ Permite ventanas emergentes',4000);return;}
-  win.document.write(html);win.document.close();
+  _abrirDocVentana(html);
 }
 
 // ── PDF Presupuesto (updated) ──
@@ -7253,9 +7540,7 @@ function abrirPDF(presupuestoId, ivaDesglosado){
     <div class="fi"><strong>Tel. ${tecTel}</strong>Mazatlán, Sinaloa, México</div>
   </div>
 </div></body></html>`;
-  const win=window.open('','_blank');
-  if(!win){showToast('⚠ Permite ventanas emergentes',4000);return;}
-  win.document.write(html);win.document.close();
+  _abrirDocVentana(html);
 }
 
 
